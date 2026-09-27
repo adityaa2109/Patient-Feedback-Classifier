@@ -1,0 +1,41 @@
+name: Agent Passport Verification
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run test suite (pytest)
+        run: python -m pytest tests/ -v
+
+      - name: Run main demo (Travel Concierge, 4 runtimes)
+        run: python run_demo.py
+
+      - name: Run second-agent demo (Inventory Ops, 4 runtimes)
+        run: python run_demo_agent2.py
+
+      - name: Run tamper-attack demo (7 attacks must be rejected)
+        run: python verification/tamper_demo.py
+
+      # Intentionally NOT run in CI: verification/live_llm_check.py.
+      # It requires a real ANTHROPIC_API_KEY and makes a genuine network
+      # call to the Anthropic API — keeping it out of CI preserves the
+      # project's "zero required API keys, zero required network calls"
+      # reproducibility guarantee for every automated check that runs here.

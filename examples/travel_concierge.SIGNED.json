@@ -5,6 +5,7 @@
     "name": "Travel Concierge",
     "version": "0.1.0",
     "purpose": "Answers travel questions and looks up flight/hotel availability using two declared tools.",
+    "description": "Reference agent for the Agent Passport Challenge submission. Demonstrates a signed identity, a behavior contract, and two typed tools that migrate unchanged across raw-SDK, LangChain, and CrewAI runtimes.",
     "author": "Agent Passport Challenge Submission"
   },
   "behavior_contract": {
@@ -64,7 +65,8 @@
           }
         }
       },
-      "side_effects": "read"
+      "side_effects": "read",
+      "authorized": true
     },
     {
       "name": "search_hotels",
@@ -112,7 +114,8 @@
           }
         }
       },
-      "side_effects": "read"
+      "side_effects": "read",
+      "authorized": true
     }
   ],
   "capabilities": {
@@ -123,7 +126,7 @@
   "verification": {},
   "signature": {
     "algorithm": "hmac-sha256",
-    "value": "085247d9ceb7e952a0ab3271bd437e1ea83be29173ebec9608ac1d1e50d705ca",
+    "value": "3025c22145b6c5c6cb327c1fef029a40e21af2a66d3d8cb2f769cc70f30df147",
     "signed_fields": [
       "passport_version",
       "identity",

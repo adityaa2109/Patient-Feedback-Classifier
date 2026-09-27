@@ -5,6 +5,7 @@
     "name": "Travel Concierge",
     "version": "0.1.0",
     "purpose": "Answers travel questions and looks up flight/hotel availability using two declared tools.",
+    "description": "Reference agent for the Agent Passport Challenge submission. Demonstrates a signed identity, a behavior contract, and two typed tools that migrate unchanged across raw-SDK, LangChain, and CrewAI runtimes.",
     "author": "Agent Passport Challenge Submission"
   },
   "behavior_contract": {
@@ -24,11 +25,22 @@
       "description": "Search flights between two cities on a given date.",
       "input_schema": {
         "type": "object",
-        "required": ["origin", "destination", "date"],
+        "required": [
+          "origin",
+          "destination",
+          "date"
+        ],
         "properties": {
-          "origin": { "type": "string" },
-          "destination": { "type": "string" },
-          "date": { "type": "string", "format": "date" }
+          "origin": {
+            "type": "string"
+          },
+          "destination": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          }
         }
       },
       "output_schema": {
@@ -39,26 +51,45 @@
             "items": {
               "type": "object",
               "properties": {
-                "flight_number": { "type": "string" },
-                "price_usd": { "type": "number" },
-                "departure_time": { "type": "string" }
+                "flight_number": {
+                  "type": "string"
+                },
+                "price_usd": {
+                  "type": "number"
+                },
+                "departure_time": {
+                  "type": "string"
+                }
               }
             }
           }
         }
       },
-      "side_effects": "read"
+      "side_effects": "read",
+      "authorized": true
     },
     {
       "name": "search_hotels",
       "description": "Search hotels in a city for a given date range.",
       "input_schema": {
         "type": "object",
-        "required": ["city", "check_in", "check_out"],
+        "required": [
+          "city",
+          "check_in",
+          "check_out"
+        ],
         "properties": {
-          "city": { "type": "string" },
-          "check_in": { "type": "string", "format": "date" },
-          "check_out": { "type": "string", "format": "date" }
+          "city": {
+            "type": "string"
+          },
+          "check_in": {
+            "type": "string",
+            "format": "date"
+          },
+          "check_out": {
+            "type": "string",
+            "format": "date"
+          }
         }
       },
       "output_schema": {
@@ -69,15 +100,22 @@
             "items": {
               "type": "object",
               "properties": {
-                "name": { "type": "string" },
-                "price_per_night_usd": { "type": "number" },
-                "rating": { "type": "number" }
+                "name": {
+                  "type": "string"
+                },
+                "price_per_night_usd": {
+                  "type": "number"
+                },
+                "rating": {
+                  "type": "number"
+                }
               }
             }
           }
         }
       },
-      "side_effects": "read"
+      "side_effects": "read",
+      "authorized": true
     }
   ],
   "capabilities": {

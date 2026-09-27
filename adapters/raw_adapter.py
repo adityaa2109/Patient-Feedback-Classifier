@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from adapters.base import RuntimeAdapter, RunResult, ToolCallRecord
 from core.tool_backends import TOOL_REGISTRY
+from core.passport import validate_tool_arguments
 
 
 class RawAdapter(RuntimeAdapter):
@@ -20,9 +21,9 @@ class RawAdapter(RuntimeAdapter):
     def build_agent(self):
         # A raw agent is just: system_prompt + tool registry + a loop.
         # Nothing to "construct" beyond binding tools to the passport's
-        # declared tool contracts.
-        declared_names = {t.name for t in self.passport.tools}
-        self._tools = {name: fn for name, fn in TOOL_REGISTRY.items() if name in declared_names}
+        # declared AND currently-authorized tool contracts.
+        authorized_names = self.passport.authorized_tool_names()
+        self._tools = {name: fn for name, fn in TOOL_REGISTRY.items() if name in authorized_names}
         return self._tools
 
     def run_task(self, task_description: str, deterministic_router: dict | None = None) -> RunResult:
@@ -44,6 +45,16 @@ class RawAdapter(RuntimeAdapter):
             if tool_name not in self._tools:
                 result.constraint_violations.append(f"tool '{tool_name}' not in declared passport tools")
                 continue
+
+            tool_contract = self.passport.get_tool(tool_name)
+            if tool_contract is not None:
+                arg_problems = validate_tool_arguments(tool_contract, args)
+                if arg_problems:
+                    result.constraint_violations.append(
+                        f"invalid arguments for '{tool_name}': {'; '.join(arg_problems)}"
+                    )
+                    continue
+
             output = self._tools[tool_name](**args)
             result.tool_calls.append(ToolCallRecord(tool_name=tool_name, arguments=args, result=output))
 

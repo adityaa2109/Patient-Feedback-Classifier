@@ -7,8 +7,8 @@
   "properties": {
     "passport_version": {
       "type": "string",
-      "description": "Version of the Agent Passport spec this manifest conforms to.",
-      "const": "1.0"
+      "description": "Schema version this manifest conforms to. 1.0 = original format. 1.1 adds identity.description and per-tool authorization; both are backward compatible with 1.0 readers.",
+      "enum": ["1.0", "1.1"]
     },
     "identity": {
       "type": "object",
@@ -23,6 +23,10 @@
         "purpose": {
           "type": "string",
           "description": "One or two sentence statement of what this agent is for."
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional longer-form description for humans/registries browsing agents. Not signed-security-critical, but included in the signature payload like every other identity field."
         },
         "author": { "type": "string" }
       }
@@ -61,6 +65,11 @@
             "enum": ["none", "read", "write", "external"],
             "default": "none",
             "description": "Declared blast radius of the tool, used for capability auditing."
+          },
+          "authorized": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether this declared tool is currently permitted to be invoked. Lets an operator revoke a tool (e.g. pending security review) without deleting its contract or breaking manifests that reference it. Adapters and the verifier must treat authorized=false identically to an undeclared tool."
           }
         }
       }

@@ -1,0 +1,99 @@
+{
+  "passport_version": "1.0",
+  "identity": {
+    "agent_id": "agent.hidevs.inventory-ops",
+    "name": "Inventory Ops Agent",
+    "version": "0.1.0",
+    "purpose": "Checks warehouse stock levels and places restock orders when inventory is low, within a strict per-order spending limit.",
+    "description": "Second reference agent for the Agent Passport Challenge, deliberately different in shape from Travel Concierge: three tools instead of two, one read tool and two tools with real side effects (write and external), and stricter numeric constraints. Proves the passport schema and verification pipeline generalize beyond a single example.",
+    "author": "Agent Passport Challenge Submission"
+  },
+  "behavior_contract": {
+    "system_prompt": "You are Inventory Ops Agent, a warehouse operations assistant. You check stock levels with check_stock_level before doing anything else. You only place a restock order with place_restock_order if the current stock is below the item's reorder threshold. You never place an order above max_order_value_usd. Before placing an order you must first notify the ops channel using notify_ops_channel so a human can see the action. You never place two restock orders for the same item in one task. You are concise and always state the item, quantity, and cost when you place an order.",
+    "system_prompt_hash": "",
+    "constraints": [
+      "Must call check_stock_level before place_restock_order for the same item.",
+      "Must not place an order exceeding max_order_value_usd.",
+      "Must call notify_ops_channel before place_restock_order.",
+      "Must not place more than one restock order for the same item per task.",
+      "Must not exceed max_tool_calls_per_task."
+    ],
+    "max_tool_calls_per_task": 6
+  },
+  "tools": [
+    {
+      "name": "check_stock_level",
+      "description": "Look up the current stock level and reorder threshold for a warehouse item.",
+      "input_schema": {
+        "type": "object",
+        "required": ["item_sku"],
+        "properties": {
+          "item_sku": { "type": "string" }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "item_sku": { "type": "string" },
+          "current_stock": { "type": "integer" },
+          "reorder_threshold": { "type": "integer" }
+        }
+      },
+      "side_effects": "read",
+      "authorized": true
+    },
+    {
+      "name": "notify_ops_channel",
+      "description": "Post a message to the ops notification channel so a human is aware an action is about to be taken.",
+      "input_schema": {
+        "type": "object",
+        "required": ["message"],
+        "properties": {
+          "message": { "type": "string" }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "posted": { "type": "boolean" }
+        }
+      },
+      "side_effects": "external",
+      "authorized": true
+    },
+    {
+      "name": "place_restock_order",
+      "description": "Place a restock order for a given item and quantity, up to max_order_value_usd.",
+      "input_schema": {
+        "type": "object",
+        "required": ["item_sku", "quantity", "max_order_value_usd"],
+        "properties": {
+          "item_sku": { "type": "string" },
+          "quantity": { "type": "integer" },
+          "max_order_value_usd": { "type": "number" }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "order_id": { "type": "string" },
+          "total_cost_usd": { "type": "number" },
+          "status": { "type": "string" }
+        }
+      },
+      "side_effects": "write",
+      "authorized": true
+    }
+  ],
+  "capabilities": {
+    "network_access": true,
+    "filesystem_access": false,
+    "persistent_memory": false
+  },
+  "verification": {},
+  "signature": {
+    "algorithm": "hmac-sha256",
+    "value": "",
+    "signed_fields": []
+  }
+}

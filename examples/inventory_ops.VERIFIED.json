@@ -1,0 +1,190 @@
+{
+  "passport_version": "1.0",
+  "identity": {
+    "agent_id": "agent.hidevs.inventory-ops",
+    "name": "Inventory Ops Agent",
+    "version": "0.1.0",
+    "purpose": "Checks warehouse stock levels and places restock orders when inventory is low, within a strict per-order spending limit.",
+    "description": "Second reference agent for the Agent Passport Challenge, deliberately different in shape from Travel Concierge: three tools instead of two, one read tool and two tools with real side effects (write and external), and stricter numeric constraints. Proves the passport schema and verification pipeline generalize beyond a single example.",
+    "author": "Agent Passport Challenge Submission"
+  },
+  "behavior_contract": {
+    "system_prompt": "You are Inventory Ops Agent, a warehouse operations assistant. You check stock levels with check_stock_level before doing anything else. You only place a restock order with place_restock_order if the current stock is below the item's reorder threshold. You never place an order above max_order_value_usd. Before placing an order you must first notify the ops channel using notify_ops_channel so a human can see the action. You never place two restock orders for the same item in one task. You are concise and always state the item, quantity, and cost when you place an order.",
+    "system_prompt_hash": "81f4781e4785b49c54183ed0eec572dd7481006a7968a988771467368353c5da",
+    "constraints": [
+      "Must call check_stock_level before place_restock_order for the same item.",
+      "Must not place an order exceeding max_order_value_usd.",
+      "Must call notify_ops_channel before place_restock_order.",
+      "Must not place more than one restock order for the same item per task.",
+      "Must not exceed max_tool_calls_per_task."
+    ],
+    "max_tool_calls_per_task": 6
+  },
+  "tools": [
+    {
+      "name": "check_stock_level",
+      "description": "Look up the current stock level and reorder threshold for a warehouse item.",
+      "input_schema": {
+        "type": "object",
+        "required": [
+          "item_sku"
+        ],
+        "properties": {
+          "item_sku": {
+            "type": "string"
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "item_sku": {
+            "type": "string"
+          },
+          "current_stock": {
+            "type": "integer"
+          },
+          "reorder_threshold": {
+            "type": "integer"
+          }
+        }
+      },
+      "side_effects": "read",
+      "authorized": true
+    },
+    {
+      "name": "notify_ops_channel",
+      "description": "Post a message to the ops notification channel so a human is aware an action is about to be taken.",
+      "input_schema": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "posted": {
+            "type": "boolean"
+          }
+        }
+      },
+      "side_effects": "external",
+      "authorized": true
+    },
+    {
+      "name": "place_restock_order",
+      "description": "Place a restock order for a given item and quantity, up to max_order_value_usd.",
+      "input_schema": {
+        "type": "object",
+        "required": [
+          "item_sku",
+          "quantity",
+          "max_order_value_usd"
+        ],
+        "properties": {
+          "item_sku": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer"
+          },
+          "max_order_value_usd": {
+            "type": "number"
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "order_id": {
+            "type": "string"
+          },
+          "total_cost_usd": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "side_effects": "write",
+      "authorized": true
+    }
+  ],
+  "capabilities": {
+    "network_access": true,
+    "filesystem_access": false,
+    "persistent_memory": false
+  },
+  "verification": {
+    "verified_runtimes": [
+      "raw-sdk",
+      "langchain",
+      "crewai",
+      "llamaindex"
+    ],
+    "last_verified_at": "2026-09-27T03:49:14.324232+00:00",
+    "verification_hash": "d5f0417f294d2d6bf31f42838eb4d2f29322aae9a5e4b07f3cf7d643da562732",
+    "certificate": {
+      "agent_id": "agent.hidevs.inventory-ops",
+      "runtimes_tested": [
+        "raw-sdk",
+        "langchain",
+        "crewai",
+        "llamaindex"
+      ],
+      "checks": {
+        "tool_call_equivalence": {
+          "passed": true,
+          "baseline": "raw-sdk",
+          "mismatched_runtimes": []
+        },
+        "constraint_compliance": {
+          "passed": true,
+          "violations": {
+            "raw-sdk": [],
+            "langchain": [],
+            "crewai": [],
+            "llamaindex": []
+          }
+        },
+        "tool_contract_compliance": {
+          "passed": true,
+          "non_compliant_calls": {}
+        },
+        "tool_argument_validity": {
+          "passed": true,
+          "argument_problems": {}
+        }
+      },
+      "structured_result": {
+        "passport_valid": true,
+        "identity_valid": true,
+        "behavior_contract_valid": true,
+        "tool_contract_valid": true,
+        "runtime_compliance": true,
+        "violations": [],
+        "overall": true
+      },
+      "generated_at": "2026-09-27T03:49:14.324052+00:00",
+      "certificate_hash": "5a77d24b3634f5621454eb74de8d6850362f1cbfb93f304988882cd51c52e480"
+    }
+  },
+  "signature": {
+    "algorithm": "hmac-sha256",
+    "value": "050f8778543a2fb02ab2154c8daea996ec553d3d626aa8dc16c9490090f7cf00",
+    "signed_fields": [
+      "passport_version",
+      "identity",
+      "behavior_contract",
+      "tools",
+      "capabilities"
+    ]
+  }
+}

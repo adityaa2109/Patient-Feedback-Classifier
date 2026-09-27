@@ -5,6 +5,7 @@
     "name": "Travel Concierge",
     "version": "0.1.0",
     "purpose": "Answers travel questions and looks up flight/hotel availability using two declared tools.",
+    "description": "Reference agent for the Agent Passport Challenge submission. Demonstrates a signed identity, a behavior contract, and two typed tools that migrate unchanged across raw-SDK, LangChain, and CrewAI runtimes.",
     "author": "Agent Passport Challenge Submission"
   },
   "behavior_contract": {
@@ -64,7 +65,8 @@
           }
         }
       },
-      "side_effects": "read"
+      "side_effects": "read",
+      "authorized": true
     },
     {
       "name": "search_hotels",
@@ -112,7 +114,8 @@
           }
         }
       },
-      "side_effects": "read"
+      "side_effects": "read",
+      "authorized": true
     }
   ],
   "capabilities": {
@@ -124,16 +127,18 @@
     "verified_runtimes": [
       "raw-sdk",
       "langchain",
-      "crewai-shim"
+      "crewai",
+      "llamaindex"
     ],
-    "last_verified_at": "2026-09-16T14:13:21.173652Z",
-    "verification_hash": "f7c8661df29bcba7217bfb5f9c8a19893dcf4920f118f82453431d839865b2f8",
+    "last_verified_at": "2026-09-27T03:49:10.381967+00:00",
+    "verification_hash": "2089202665c70008fd866098f8c0478270fcb6171e2349a0e77f6cc526d93dcc",
     "certificate": {
       "agent_id": "agent.hidevs.travel-concierge",
       "runtimes_tested": [
         "raw-sdk",
         "langchain",
-        "crewai-shim"
+        "crewai",
+        "llamaindex"
       ],
       "checks": {
         "tool_call_equivalence": {
@@ -146,21 +151,35 @@
           "violations": {
             "raw-sdk": [],
             "langchain": [],
-            "crewai-shim": []
+            "crewai": [],
+            "llamaindex": []
           }
         },
         "tool_contract_compliance": {
           "passed": true,
-          "undeclared_calls": {}
+          "non_compliant_calls": {}
+        },
+        "tool_argument_validity": {
+          "passed": true,
+          "argument_problems": {}
         }
       },
-      "generated_at": "2026-09-16T14:13:21.173451Z",
-      "certificate_hash": "34d48bf4e95d921b903190a76dba94a98a5014d19f5bf400a0d04b95242c098c"
+      "structured_result": {
+        "passport_valid": true,
+        "identity_valid": true,
+        "behavior_contract_valid": true,
+        "tool_contract_valid": true,
+        "runtime_compliance": true,
+        "violations": [],
+        "overall": true
+      },
+      "generated_at": "2026-09-27T03:49:10.381556+00:00",
+      "certificate_hash": "4a8149d76f5e4eb3beaa850048de43bba830d8909268be99b044e4429df96a2e"
     }
   },
   "signature": {
     "algorithm": "hmac-sha256",
-    "value": "085247d9ceb7e952a0ab3271bd437e1ea83be29173ebec9608ac1d1e50d705ca",
+    "value": "3025c22145b6c5c6cb327c1fef029a40e21af2a66d3d8cb2f769cc70f30df147",
     "signed_fields": [
       "passport_version",
       "identity",

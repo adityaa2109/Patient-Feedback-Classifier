@@ -1,9 +1,6 @@
 # Agent Passport
 
-[![Agent Passport Verification](https://github.com/OWNER/REPO/actions/workflows/test.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/test.yml)
-> Replace `OWNER/REPO` above with your actual GitHub username/repo once
-> pushed — this badge will then show a live "passing" status pulled
-> straight from `.github/workflows/test.yml`, running on every push.
+[![Agent Passport Verification](https://github.com/adityaa2109/agent-passport/actions/workflows/test.yml/badge.svg)](https://github.com/adityaa2109/agent-passport/actions/workflows/test.yml)
 
 **A portable identity, integrity, and behavior-contract layer for AI agents.**
 

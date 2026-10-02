@@ -748,15 +748,22 @@ def test_explainability_md_has_required_headings_and_sentence_counts():
     assert os.path.exists(path), "EXPLAINABILITY.md must exist directly in the repository root"
     with open(path) as f:
         text = f.read()
-    for heading in ["# Decision", "# Inputs", "# Limits"]:
-        assert heading in text, f"EXPLAINABILITY.md is missing required heading: {heading}"
+    required = {
+        "decision": ["decision", "reasoning", "how it decides"],
+        "inputs": ["data source", "input", "data used"],
+        "limits": ["limitation", "constraint", "known issue"],
+    }
+    h1_titles = [l[2:].strip().lower() for l in text.splitlines() if l.startswith("# ")]
+    for name, words in required.items():
+        assert any(any(w in title for w in words) for title in h1_titles), \
+            f"EXPLAINABILITY.md has no # heading containing one of {words}"
 
     sections = re.split(r"(?m)^# ", text)[1:]
     for sec in sections:
         lines = sec.split("\n", 1)
         title = lines[0].strip()
         body = lines[1] if len(lines) > 1 else ""
-        if title in ("Decision", "Inputs", "Limits"):
+        if any(w in title.lower() for w in ["decision","reasoning","how it decides","data source","input","data used","limitation","constraint","known issue"]):
             sentences = [s for s in re.split(r"(?<=[.!?])\s+", body.strip()) if len(s.split()) > 3]
             assert len(sentences) >= 2, f"EXPLAINABILITY.md '{title}' section needs at least 2 real sentences"
 

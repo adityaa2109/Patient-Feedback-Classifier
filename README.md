@@ -1,12 +1,12 @@
-# Expense Approval Agent
+# Code Review Checker
 
-A small, rule-based agent that reviews one employee expense claim and returns
-**approve**, **reject**, or **escalate** (to a manager or to finance). Each
-decision lists the rule identifiers that caused it and a plain-language reason.
-
-It checks, in order: invalid amounts, prohibited categories, duplicates,
-missing receipts, unknown categories, category limits, a monthly spending cap,
-and then either auto-approves small claims or sends larger ones to a manager.
+A small, rule-based agent that reads a unified diff and returns **approve**,
+**request changes**, or **needs human**, with each finding tied to a rule,
+severity, file, and line number. It flags hardcoded secrets, dangerous calls
+(`eval`, `exec`, `os.system`, `shell=True`, `pickle`), bare `except:`, skipped
+tests, debug leftovers, source changes without tests, oversized changes, and
+edits to sensitive files such as CI workflows. It never prints the value of a
+suspected secret.
 
 ## Run it
 
@@ -19,11 +19,11 @@ python -m pytest tests -v
 ## Files
 
 - `agent.yaml`, `SOUL.md`, `EXPLAINABILITY.md`: the OpenGAP agent description.
-- `expense_approval/policy.py`: all rules, limits, and the `review_claim` function.
-- `tests/`: 16 tests covering every rule, the boundaries, and the documents.
+- `code_review/checker.py`: the diff parser, the rules, and the verdict logic.
+- `tests/`: automated tests for every rule, the verdict order, and the documents.
 
 ## Honest scope
 
-The limits are example values and the agent cannot verify receipts. It is a
-clear, auditable example of policy-based decisions, not a production finance
-system.
+This is pattern matching on text. It can miss real problems and flag harmless
+code, so it should be used next to real secret scanners, static analysis, and
+human review, not instead of them.

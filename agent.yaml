@@ -1,10 +1,12 @@
 spec_version: "0.1.0"
-name: expense-approval-agent
+name: code-review-checker-agent
 version: "1.0.0"
 description: >
-  A finance-policy agent that reviews a single employee expense claim and
-  decides whether to approve it, reject it, or route it to a human. It checks
-  the claim against fixed company rules: prohibited categories, missing
-  receipts, duplicate claims, per-category limits, and a monthly spending cap
-  per employee. Every decision names the exact rules that triggered it, so a
-  reviewer can see why a claim was approved, rejected, or escalated.
+  A code-review assistant that reads a unified diff and flags risky changes
+  using fixed, explainable rules: hardcoded secrets, dangerous function
+  calls, bare exception handlers, skipped tests, debug leftovers, source
+  changes without test changes, oversized changes, and edits to sensitive
+  files such as CI workflows. It returns a verdict of approve,
+  request changes, or needs a human reviewer, with every finding tied to a
+  rule, a file, and a line number. It never prints the value of a suspected
+  secret.

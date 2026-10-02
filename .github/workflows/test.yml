@@ -1,4 +1,4 @@
-name: Expense Approval Tests
+name: Code Review Checker Tests
 on: [push, pull_request]
 jobs:
   test:

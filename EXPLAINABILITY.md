@@ -1,109 +1,122 @@
 # Explainability
 
-Expense Approval Agent reviews one expense claim at a time and returns an
-approve, reject, or escalate decision. This report explains how it decides,
-what data it uses, and where it should not be trusted. Every claim points to
-real code in `expense_approval/policy.py`.
+Code Review Checker reads a unified diff and returns a verdict with itemized
+findings. This report explains how it decides, what it reads, and where it
+should not be trusted. Every claim points to real code in
+`code_review/checker.py`.
 
 # Decision and Reasoning: How It Decides
 
-This section explains how the agent reaches a decision. It uses fixed rules
-and no model, so the same claim and history always produce the same result.
-Every decision returns the rule identifiers that triggered it and a sentence
-of reasoning, so nothing is a black box.
+This section explains how the agent reaches a verdict. It uses fixed text
+patterns and counts, with no model, so the same diff always gives the same
+answer. Each finding carries a rule identifier, a severity, a file, and a
+line number, so the reasoning behind a verdict can be checked by hand.
 
-## The rules in order
+## Step 1: find the added lines
 
-The function `review_claim` checks these rules in order, and the first reject
-or escalate rule that fires decides the outcome:
+`parse_diff` walks the diff, tracks the current file from the `+++` line and
+the new line number from each `@@` hunk header, and collects only the lines
+that begin with `+`. Removed and unchanged lines are ignored, so old problems
+are not blamed on the author.
 
-1. **R1** Reject if the amount is zero or negative.
-2. **R2** Reject if the category is prohibited (alcohol, personal, fines).
-3. **R3** Reject if the same employee, vendor, amount, and date already exist
-   in the history.
-4. **R4** Reject if the amount is above $25 and there is no receipt.
-5. **R5** Escalate to a manager if the category is unknown.
-6. **R6** Escalate to finance if the amount is above the category limit.
-7. **R7** Escalate to finance if this claim would push the employee's total
-   for that month above $3,000.
-8. **R8** Approve if the amount is $100 or less and no rule above fired.
-9. **R9** Otherwise escalate to a manager.
+## Step 2: apply the content rules
 
-## Why the order matters
+Each added line is tested against the rules in `CONTENT_RULES`, and the first
+match on a line becomes its single finding:
 
-Hard failures such as prohibited items and duplicates come first, so an
-escalation is never wasted on a claim that should simply be rejected. Limits
-come before auto-approval, so a small claim cannot slip past a monthly cap.
+| Rule | Severity | What it flags |
+|---|---|---|
+| C1 | high | Likely AWS keys, private key headers, hardcoded passwords or tokens |
+| C2 | high | `eval`, `exec`, `os.system`, `shell=True`, `pickle.load(s)` |
+| C3 | medium | Bare `except:` |
+| C4 | medium | A skipped test |
+| C5 | low | Debug output such as `print(`, `breakpoint(`, `console.log(` |
+| C6 | low | `TODO`, `FIXME`, `HACK` |
+
+## Step 3: apply the whole-change rules
+
+Rule C7 (medium) fires when source files changed but no test file did. A
+change is also marked large if it adds more than 400 lines, and sensitive if
+it touches CI workflows, Docker files, dependency files, or `.env` files.
+
+## Step 4: choose the verdict
+
+The verdict is chosen in this order:
+
+1. Any high finding gives **request changes**.
+2. Otherwise a large or sensitive change gives **needs human**.
+3. Otherwise any medium finding gives **request changes**.
+4. Otherwise the result is **approve**, with low findings listed as notes.
 
 ## Worked example
 
-A $300 software claim has a valid category and receipt, is under the $500
-software limit, and does not break the monthly cap. It is above $100, so R9
-applies and the claim goes to a manager. The output is `escalate`, route
-`manager`, rule `R9`.
+A diff adds `result = eval(user_input)` to `app/config.py` and changes no
+tests. Rule C2 fires as high and rule C7 fires as medium. Because a high
+finding exists, the verdict is request changes, with both findings listed.
 
 # Inputs and Data Sources: Data Used
 
-This section lists what the agent takes in and where its data comes from.
-Each review takes one claim and an optional list of earlier claims. The data
-used is only what is passed in, plus fixed policy numbers stored in the
-code.
+This section lists what the agent reads and where the data comes from. The
+only input is the text of a unified diff passed to `review_diff`. The data
+used is that text plus fixed rule patterns stored in the code, with no
+network access and no stored history.
 
 ## Inputs
 
-A claim has an employee name, category, amount in US dollars, an ISO date, a
-vendor, and a flag for whether a receipt exists. The history is a list of
-earlier claims in the same format. Categories are trimmed and lower-cased
-before they are compared.
+The input is one string in the standard unified diff format produced by
+`git diff`. The agent reads file names from `+++` lines, line numbers from
+`@@` headers, and the content of lines that start with `+`.
 
 ## Data sources
 
-The policy limits (category limits, the $25 receipt threshold, the $100
-auto-approval range, and the $3,000 monthly cap) are constants at the top of
-`expense_approval/policy.py`. There is no database, no network call, and no
-external service. The history comes from whoever calls the function.
+The rule patterns, the 400-line threshold, and the list of sensitive paths
+are constants at the top of `code_review/checker.py`. There is no database,
+no external service, and no model call.
 
-## Privacy
+## Privacy and secrets
 
-The agent sees employee names and spending amounts only for the duration of
-one call. It stores nothing and sends nothing anywhere else. A real
-deployment should pass employee identifiers instead of names.
+The agent may see real secrets inside a diff. It never copies a matched
+value into a finding, a summary, or any output, and it does not store the
+diff after returning the result. Its messages say only that a possible
+secret was found and where.
 
 ## Data lineage
 
-Data moves one way: the claim and history go into `review_claim`, and a
-`Decision` comes out. Nothing is written back, and no state is kept between
-calls.
+Data moves one way: the diff text goes into `parse_diff`, the added lines go
+through the rules, and a `Review` object comes out with a verdict and its
+findings. Nothing is written back and no state is kept between calls.
 
 # Limitations, Constraints and Known Issues
 
-This section states where the agent should not be trusted. It checks claims
-against simple rules, so it cannot judge whether a purchase was truly
-necessary. The limits are example values and have not been tuned for any real
-company.
+This section states where the agent should not be trusted. It matches text
+patterns, so it can both miss real problems and flag harmless code. It
+cannot understand what a change is meant to do, so a clean verdict is not a
+guarantee that the code is correct or secure.
 
 ## Known limitations
 
-- It cannot read or verify a receipt. The `has_receipt` flag is trusted as
-  given.
-- Duplicate detection only matches exact vendor, amount, date, and employee,
-  so a near-duplicate with a different amount is not caught.
-- The category list is small and fixed. A new valid category is escalated
-  until someone adds it.
-- It has no currency handling. All amounts are assumed to be US dollars.
-- The monthly cap counts only the history it is given, so a missing history
-  hides earlier spending.
+- Pattern matching produces false positives, such as a harmless `eval(` in a
+  comment or a test fixture, and false negatives, such as a secret split
+  across two lines or encoded.
+- The secret rules cover a few common formats and miss many others.
+- It treats a file as a test only by name, so a test stored under an unusual
+  name counts as source.
+- It reads only added lines, so a problem created by removing a safeguard is
+  not seen.
+- It checks Python-style and JavaScript-style patterns best and covers other
+  languages weakly.
+- The 400-line threshold and the sensitive path list are example values, not
+  tuned to any real team.
 
 ## Constraints that are enforced
 
-The agent never approves prohibited categories, duplicates, large claims
-without receipts, or claims that break the monthly cap. Automated tests in
-`tests/test_expense_approval.py` check each of these rules, including the
-boundaries at $25 and $100.
+The agent never prints a suspected secret, never approves a change with a
+high-severity finding, and never approves a large or sensitive change without
+a human. Automated tests in `tests/test_code_review.py` check each of these
+rules, including the 400-line boundary and line numbering.
 
 ## Safety and human oversight
 
-The agent supports a finance team and does not replace it. It never approves
-anything above $100, and it routes every unclear case to a named person. It
-should not be the only control on real money, and a person should sample its
-approvals regularly.
+The agent supports reviewers and does not replace them. It should be one
+check among several, alongside real secret scanners, static analysis, and a
+human reading the change. A person should make the final merge decision.

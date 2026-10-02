@@ -8,6 +8,8 @@ reliable. Every claim points at a real file and function in this repository.
 
 # Decision and Reasoning: How It Decides
 
+This section explains how the agent decides whether another agent passes or fails. The decision is a rule-based yes or no, made by four deterministic checks plus a manifest integrity check, with no hidden scoring. The reasoning behind each result is always reported, so a reviewer can see exactly which rule caused a failure.
+
 ## What the agent decides
 
 The decision is binary and rule-based, never a free-form judgment. For each
@@ -77,6 +79,8 @@ numbers returned as strings) and never corrects an unknown tool name, so a
 hallucinated tool still fails check 3.
 
 # Inputs and Data Sources: Data Used
+
+This section lists every input the agent accepts and every data source it uses. All inputs are explicit files or environment variables, and the only external service is an optional call to the Anthropic API. No personal data, scraped data, or third-party datasets are used.
 
 ## What goes in
 
@@ -152,6 +156,8 @@ a certification or a claim of full compliance.
   regulated high-risk system.
 
 # Limitations, Constraints and Known Issues
+
+This section states what the agent cannot do and where its results should not be trusted. Its verification proves only manifest integrity and cross-runtime consistency, not that the verified agent is safe or correct. The known issues and constraints below are listed so that no result is mistaken for a stronger guarantee than it is.
 
 ## What the verification proves
 

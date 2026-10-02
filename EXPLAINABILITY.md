@@ -1,200 +1,198 @@
 # Explainability
 
-This document is a transparency report for Agent Passport. It explains how
-the agent decides, what data it consumes and where that data comes from, the
-exact algorithms and formulas behind its checks, the lineage of data from
-input manifest to output certificate, the recognized safety frameworks its
-threat model maps to, and its honestly-stated limitations. Every claim
-points at a real file and function in this repository.
+Agent Passport is a verification agent. It does not chat with end users; it
+checks whether a *different* AI agent, described by a signed manifest, is
+still the agent that was signed and behaves the same in every runtime. This
+report explains what it decides, what it consumes, and where it stops being
+reliable. Every claim points at a real file and function in this repository.
 
 # Decision
 
-The agent's core decision is binary and rule-based, never a free-form
-judgment call. For each verification run it answers two questions: is the
-target agent's manifest **valid** (signature intact, behavior-contract hash
-matches, identity block complete), and is every tested runtime **compliant**
-(every tool call was declared, authorized, schema-valid, and either
-identical across runtimes or following the same tool sequence with
-independently valid arguments).
+## What the agent decides
 
-The decision is made in `verification/harness.py` by
-`VerificationHarness.run()`, which executes four independent, deterministic
-checks:
+The decision is binary and rule-based, never a free-form judgment. For each
+run it answers two questions: is the manifest **valid** (signature intact,
+behavior-contract hash matches, identity block complete, no duplicate tool
+names), and is every tested runtime **compliant** (every tool call declared,
+authorized, schema-valid, and equivalent across runtimes). The output is a
+pass/fail certificate, not a score, so there are no weights, thresholds, or
+probabilities to interpret.
 
-1. **Tool-call equivalence** — `_check_tool_call_equivalence` (exact mode,
-   the default) requires every runtime's `(tool_name, arguments, result)`
-   sequence to equal a baseline runtime's sequence.
-   `_check_semantic_tool_call_equivalence` (opt-in) requires only the
-   ordered tool names to match, while each call's arguments must
-   independently pass schema and bounds validation.
-2. **Constraint compliance** — `_check_constraint_compliance` fails if any
-   adapter recorded a `constraint_violations` entry (e.g. max tool calls
-   exceeded).
-3. **Tool contract compliance** — `_check_declared_and_authorized_tools_only`
-   fails if any executed tool is undeclared or marked `authorized: false`.
-4. **Tool argument validity** — `_check_tool_argument_validity` runs
-   `validate_tool_arguments()` from `core/passport.py` on every observed
-   call.
+## How it decides (algorithms and formulas)
 
-A certificate is emitted only if all four checks pass across all tested
-runtimes. Otherwise `VerificationFailure` is raised with the exact check
-name and reason. The result is combined with the manifest's static integrity
-decision from `Passport.verify_full()` into one `VerificationResult` with an
-`overall` boolean and an itemized `violations` list.
+`VerificationHarness.run()` in `verification/harness.py` runs four
+independent, deterministic checks:
 
-When live Claude-based tool selection is enabled (`core/llm_router.py`), the
-model's choice is treated as just another candidate route and is subject to
-the same four checks. `_normalize_route` repairs only formatting noise
-(tool-name casing, numeric strings) and never patches an unknown tool name,
-so a hallucinated tool still fails check 3.
+1. **Tool-call equivalence.** In exact mode, for runtimes R1..Rn the check
+   passes iff `trace(Ri) == trace(R1)` for every i, where a trace is the
+   ordered list of `(tool_name, arguments, result)` tuples. In semantic mode
+   it passes iff the ordered tool names match and every call independently
+   satisfies `validate_tool_arguments(tool, args) == []`.
+2. **Constraint compliance.** Fails if any adapter recorded a
+   `constraint_violations` entry, for example exceeding
+   `max_tool_calls_per_task`.
+3. **Tool contract compliance.** Fails if any executed tool is undeclared or
+   has `authorized: false`. A de-authorized tool is treated exactly like an
+   undeclared one.
+4. **Tool argument validity.** Fails if a required field is missing, an
+   argument is not declared in `input_schema`, the value's type does not
+   match the declared `type`, or a number is below `minimum` or above
+   `maximum`.
+
+The manifest itself is checked in `core/passport.py`:
+
+- `system_prompt_hash = SHA-256(system_prompt)`
+- `signature = HMAC-SHA256(secret, canonical_json({passport_version,
+  identity, behavior_contract, tools, capabilities}))`, with sorted keys and
+  compact separators so dict ordering never changes the result.
+- Verification recomputes both and compares signatures with
+  `hmac.compare_digest` (constant-time).
+
+The overall verdict is `overall = check_1 AND check_2 AND check_3 AND
+check_4 AND manifest_valid`. The certificate is stamped with
+`certificate_hash = SHA-256(json.dumps(certificate, sort_keys=True))`, so any
+change to the certificate changes the hash.
+
+## Why the decision can be trusted or challenged
+
+Every failure raises `VerificationFailure` naming the exact check and
+reason, and `VerificationResult.violations` lists each problem, so a reviewer
+can see which rule failed instead of a generic rejection. The decision logic
+is covered by `tests/test_passport.py` (51 tests), including seven tamper
+scenarios in `verification/tamper_demo.py`.
+
+## Human oversight
+
+The agent never acts on the verified agent; it only reports. A person
+decides what to do with a failed certificate. A passing certificate should
+be treated as evidence about manifest integrity and runtime consistency, not
+as approval to deploy.
+
+## Role of the live model
+
+When `core/llm_router.py` uses Claude to choose tools, that choice is just a
+candidate route. It is subject to the same four checks and gets no special
+trust. `_normalize_route` repairs only formatting noise (tool-name casing,
+numbers returned as strings) and never corrects an unknown tool name, so a
+hallucinated tool still fails check 3.
 
 # Inputs
 
-All inputs are explicit and file- or environment-based. There is no hidden
-state and no arbitrary file reading.
+## What goes in
 
-1. **A signed agent manifest** defined by `spec/agent_passport.schema.json`:
-   `identity`, `behavior_contract` (system prompt, SHA-256 hash, constraints,
+1. **A signed agent manifest** (`spec/agent_passport.schema.json`):
+   `identity`, `behavior_contract` (system prompt, hash, constraints,
    `max_tool_calls_per_task`), `tools` (name, description, JSON-Schema
    `input_schema` with optional `minimum`/`maximum`, `output_schema`,
-   `side_effects`, `authorized`), `capabilities`, and a `signature` block.
-2. **A set of tasks with routing instructions** — either a fixed
-   deterministic route or, only if `ANTHROPIC_API_KEY` is set, a live route
-   from the Anthropic Messages API. `build_task_set()` in
-   `core/llm_router.py` tries live first and falls back to deterministic on
-   any failure, reporting `"live-llm"`, `"mixed"`, or `"deterministic"`.
+   `side_effects` of none/read/write/external, `authorized` flag),
+   `capabilities`, and a `signature` block.
+2. **Tasks with routing instructions**, either a fixed deterministic route
+   or, only when `ANTHROPIC_API_KEY` is set, a live response from the
+   Anthropic Messages API. `build_task_set()` tries live first and falls back
+   to deterministic on any failure, and reports `"live-llm"`, `"mixed"` or
+   `"deterministic"`.
 3. **Runtime adapters** in `adapters/` (raw SDK, LangChain, CrewAI,
-   LlamaIndex) that translate declared tools into each framework's format
-   and execute them against `core/tool_backends.py`.
+   LlamaIndex) that turn declared tools into each framework's format and run
+   them against `core/tool_backends.py`.
 
-The agent accepts no free-text instructions from an end user during a run
-and retains no state between runs beyond writing its `.VERIFIED.json` output.
+## Data sources
 
-# Data Sources
+All data is local to the repository or the process environment: manifests
+in `examples/`, the schema in `spec/`, deterministic in-memory tool backends
+in `core/tool_backends.py`, and the optional Anthropic API. No training
+data, scraped data, or third-party datasets are used.
 
-Every data source is local to the repository or the process environment.
+## Privacy and sensitive data
 
-| Source | Origin | Used by |
-|---|---|---|
-| Agent manifests | `examples/*.manifest.json`, `*.SIGNED.json` | `Passport.load()` |
-| Manifest schema | `spec/agent_passport.schema.json` | manifest structure |
-| Tool backends | `core/tool_backends.py` (deterministic, in-memory) | all adapters |
-| Task definitions | `core/llm_router.py: build_task_set()` | harness |
-| Live model output (optional) | Anthropic Messages API, only if `ANTHROPIC_API_KEY` is set | router |
-| Signing secret | `DEFAULT_SECRET` in `core/passport.py` (demo placeholder), overridable | sign/verify |
+The agent processes no personal data and no end-user content. No secrets are
+committed; `ANTHROPIC_API_KEY` is read only from the environment and never
+logged or echoed, and `test_no_committed_secrets_in_tracked_text_files`
+enforces this on every CI run. The signing secret in `core/passport.py` is a
+demo placeholder, overridable for real use.
 
-No training data, user personal data, or third-party datasets are used. Tool
-backends return fixed, deterministic results, so differences between
-runtimes can only come from routing, not from the tools.
+## Data lineage
 
-# Algorithms and Formulas
+Data flows one way: manifest → `sign_manifest()` (adds hash and signature)
+→ `*.SIGNED.json` → `Passport.load(strict=True)` (recomputes and rejects on
+mismatch) → the same `Passport` object handed to every adapter → each
+adapter returns a `RunResult` of `ToolCallRecord(tool_name, arguments,
+result)` plus violations → harness checks → certificate with
+`certificate_hash` → `stamp_verification()` → `*.VERIFIED.json`. Each stage
+writes a new artifact instead of mutating its input, and `equivalence_mode`
+and `routing_mode` record which path produced the result. The agent accepts
+no free-text instructions during a run and keeps no state between runs.
 
-**Canonical payload.** `_canonical_payload` serializes
-`{passport_version, identity, behavior_contract, tools, capabilities}` as
-JSON with sorted keys and compact separators, so ordering never changes the
-signature.
+## Input handling and security
 
-**Prompt hash.** `system_prompt_hash = SHA-256(system_prompt)`
-(`sha256_hex`). `verify_behavior_contract_integrity` passes only if
-`SHA-256(system_prompt) == system_prompt_hash`.
-
-**Signature.** `signature = HMAC-SHA256(secret, canonical_payload)`
-(`sign_manifest`). `verify_signature` recomputes it and compares using
-`hmac.compare_digest` (constant-time).
-
-**Exact equivalence.** For runtimes `R1..Rn`, the check passes iff for every
-`i`, `trace(Ri) == trace(R1)`, where a trace is the ordered list of
-`(tool_name, arguments, result)` tuples.
-
-**Semantic equivalence.** Passes iff for every `i`,
-`names(trace(Ri)) == names(trace(R1))` and, for every call `c`,
-`validate_tool_arguments(tool(c), args(c)) == []`.
-
-**Argument validity.** `validate_tool_arguments` reports a problem when a
-required field is missing, an argument is not declared in `input_schema`,
-the Python value does not match the declared `type`, `value < minimum`, or
-`value > maximum`.
-
-**Certificate hash.**
-`certificate_hash = SHA-256(json.dumps(certificate, sort_keys=True))`,
-computed over the certificate before the hash field is added. Changing any
-field changes the hash. The manifest-level `verification_hash` produced by
-`Passport.stamp_verification` uses the same SHA-256 construction.
-
-**Overall verdict.** `overall = AND(check_1, check_2, check_3, check_4)`
-combined with the static manifest checks. There are no weights, scores, or
-probabilistic thresholds; every verdict is a boolean.
-
-# Data Lineage
-
-Data moves in one direction with no feedback loop:
-
-`manifest (examples/*.manifest.json)` → `sign_manifest()` adds
-`system_prompt_hash` and `signature` → `*.SIGNED.json` →
-`Passport.load(strict=True)` recomputes hash and signature and raises
-`ValueError` on mismatch → the same `Passport` object is passed to every
-adapter → each adapter builds its framework-native tools from
-`authorized_tool_names()` and `TOOL_REGISTRY` → each adapter returns a
-`RunResult` of `ToolCallRecord(tool_name, arguments, result)` plus
-`constraint_violations` → `VerificationHarness.run()` applies the four
-checks → certificate dict with `certificate_hash` →
-`stamp_verification()` → `*.VERIFIED.json`.
-
-Each stage writes a new artifact rather than mutating its input, so any
-output can be traced back to the exact manifest bytes and the exact run that
-produced it. The `routing_mode` and `equivalence_mode` fields record which
-path (deterministic, mixed, or live) produced a result.
-
-# Safety and Security Considerations
-
-The threat model centers on manifest integrity: a tampered system prompt or
-a smuggled tool declaration changes an agent's effective instructions
-without authorization. `verification/tamper_demo.py` exercises seven attack
-patterns and confirms all are rejected at `Passport.load(..., strict=True)`:
-an unauthorized tool injected after signing, an authorized tool silently
+`verification/tamper_demo.py` shows seven attacks being rejected at load
+time: an unauthorized tool injected after signing, an authorized tool
 removed, a tool's schema or side-effects modified, the system prompt
 rewritten, constraints stripped, identity swapped to impersonate another
-agent, and a stale-signature attack where the prompt and hash are updated
+agent, and a stale-signature attack where prompt and hash are updated
 consistently but the signature is not recomputed.
 
-Every tool carries a `side_effects` class (`none`/`read`/`write`/`external`)
-and an `authorized` flag, and a de-authorized tool is treated exactly like
-an undeclared one by both the harness and every adapter. No secrets are
-committed; `ANTHROPIC_API_KEY` is read only from the environment and never
-logged, and `test_no_committed_secrets_in_tracked_text_files` enforces this
-in CI.
+## Frameworks this maps to
 
-# Safety Frameworks
+The mapping shows which mechanism addresses part of each control. It is not
+a certification or a claim of full compliance.
 
-The design maps to the following recognized frameworks. "Maps to" means the
-mechanism addresses part of the control; it does not mean certification or
-full compliance.
-
-| Framework | Relevant item | How this project addresses it |
-|---|---|---|
-| OWASP Top 10 for LLM Applications | LLM01 Prompt Injection (tampered instructions), LLM05 Supply Chain, LLM06 Excessive Agency | Signed system prompt and hash detect instruction tampering; signed manifest detects altered components; declared, authorized-only tools with `side_effects` limit agency |
-| NIST AI RMF 1.0 | MEASURE (testing and evaluation), MANAGE (risk controls), GOVERN (documentation) | Repeatable cross-runtime verification, tamper demo, and this transparency document |
-| NIST SP 800-107 / FIPS 198-1 | HMAC and SHA-256 usage | HMAC-SHA256 with constant-time comparison |
-| EU AI Act (transparency and record-keeping principles) | Technical documentation, traceability | Hash-stamped certificates and this document provide traceable records; this project does not claim to be a regulated high-risk system |
-| MITRE ATLAS | Tampering with AI agent configuration | The seven tamper-demo attacks correspond to configuration-tampering techniques |
+- **OWASP Top 10 for LLM Applications:** LLM01 Prompt Injection (tampered
+  instructions are detected by the signed prompt and hash), LLM05 Supply
+  Chain (altered components change the signature), and LLM06 Excessive
+  Agency (only declared, authorized tools with a `side_effects` class).
+- **NIST AI RMF 1.0:** GOVERN (this documentation), MEASURE (repeatable
+  cross-runtime testing), MANAGE (de-authorizing a tool without deleting its
+  contract).
+- **MITRE ATLAS:** the tamper-demo attacks correspond to tampering with an
+  AI agent's configuration.
+- **NIST FIPS 198-1 and FIPS 180-4:** HMAC and SHA-256 as the signing and
+  hashing primitives.
+- **EU AI Act (transparency and record-keeping principles):** hash-stamped
+  certificates give a traceable record. This project does not claim to be a
+  regulated high-risk system.
 
 # Limits
 
-The agent's verification proves two narrow things and nothing beyond them:
-that a manifest's bytes are unchanged since signing, and that the tested
-runtimes behaved according to its own four rule-based checks. It does not
-prove that the verified agent is safe, unbiased, or free of prompt-injection
-risk from live user input at runtime, and this boundary must never be
-overstated as a safety guarantee.
+## What the verification proves
 
-HMAC is a shared-secret scheme, so anyone holding the secret can re-sign a
-modified manifest; the repository's secret is a demo placeholder, and real
-use needs a secret manager or asymmetric signatures. The live-LLM path
-depends on an external API and key, and falls back to deterministic replay
-without one, so any "live" claim is only as strong as the mode that actually
-ran. `validate_tool_arguments()` is a lightweight structural and bounds
-checker, not a full JSON Schema implementation, so it can miss
-domain-specific invalid values such as a well-formed but nonexistent SKU.
-Cross-framework export testing is limited to what was genuinely executed:
-CrewAI and the OpenAI schema export passed, while Claude Code and Lyzr were
-not fully tested, as stated in `README.md`.
+It proves two narrow things: a manifest's bytes are unchanged since signing,
+and the tested runtimes behaved according to this agent's own four rules. It
+does **not** prove the verified agent is safe, unbiased, accurate, or free of
+prompt-injection risk from live user input, and it must never be presented as
+a safety guarantee.
+
+## Known weaknesses
+
+- **Shared secret.** HMAC means anyone holding the secret can re-sign a
+  modified manifest. The repository secret is a demo placeholder; real use
+  needs a secret manager or asymmetric signatures.
+- **Lightweight validation.** `validate_tool_arguments()` checks required
+  fields, types, and numeric bounds, not full JSON Schema. It can miss
+  domain-specific invalid values, such as a well-formed but nonexistent SKU.
+- **Live mode depends on an external service.** Without an API key it falls
+  back to deterministic replay, so a "live" claim is only as strong as the
+  mode that actually ran.
+- **Deterministic tools.** Backends return fixed results, so the agent tests
+  routing consistency, not real-world tool behavior.
+- **Bias and fairness.** The checks are structural and do not evaluate
+  content, so bias or harmful output in the verified agent is out of scope.
+
+## Failure behavior
+
+On any failed check the agent stops and raises `VerificationFailure` with the
+check name and reason; it never emits a certificate for a partial pass. If
+the live model route fails, it falls back to the deterministic route rather
+than guessing.
+
+## Intended and prohibited use
+
+Intended use is integrity and portability verification of agent manifests
+during development, review, and CI. It should not be used as the sole basis
+for approving an agent for high-stakes domains (legal, medical, financial),
+or as proof of regulatory compliance.
+
+## Export test coverage
+
+Cross-framework export was tested for CrewAI and the OpenAI SDK (schema
+export only, no live call). Claude Code and Lyzr were not fully tested, as
+stated in `README.md`.

@@ -1,4 +1,6 @@
 langchain>=0.1.0
 crewai
 llama-index-core
+openai
 pytest
+PyYAML

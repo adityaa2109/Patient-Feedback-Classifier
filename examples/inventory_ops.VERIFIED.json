@@ -92,10 +92,13 @@
             "type": "string"
           },
           "quantity": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500
           },
           "max_order_value_usd": {
-            "type": "number"
+            "type": "number",
+            "minimum": 0
           }
         }
       },
@@ -129,8 +132,8 @@
       "crewai",
       "llamaindex"
     ],
-    "last_verified_at": "2026-09-30T12:01:41.864134+00:00",
-    "verification_hash": "d5f0417f294d2d6bf31f42838eb4d2f29322aae9a5e4b07f3cf7d643da562732",
+    "last_verified_at": "2026-10-02T08:35:35.399671+00:00",
+    "verification_hash": "fa710fb1f9656d27bf9543b4b9939a260758330511b6e2f1d6d576730de7023b",
     "certificate": {
       "agent_id": "agent.hidevs.inventory-ops",
       "runtimes_tested": [
@@ -139,6 +142,7 @@
         "crewai",
         "llamaindex"
       ],
+      "equivalence_mode": "exact",
       "checks": {
         "tool_call_equivalence": {
           "passed": true,
@@ -172,13 +176,13 @@
         "violations": [],
         "overall": true
       },
-      "generated_at": "2026-09-30T12:01:41.860129+00:00",
-      "certificate_hash": "a4b77775c6a6efe643323ea72bcacb39ed5cf7b08f0d4e7c2840e8b06715f2e2"
+      "generated_at": "2026-10-02T08:35:35.399392+00:00",
+      "certificate_hash": "6ac5215aa830258040e3b539207c875e1dff273d0ba7b0e45e27fc42fa01f5db"
     }
   },
   "signature": {
     "algorithm": "hmac-sha256",
-    "value": "050f8778543a2fb02ab2154c8daea996ec553d3d626aa8dc16c9490090f7cf00",
+    "value": "25232c9f3ab5c6af42a4222c84746179c79c51da323fb6623b9abc7a56b5f8b7",
     "signed_fields": [
       "passport_version",
       "identity",

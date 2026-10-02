@@ -1,0 +1,22 @@
+spec_version: "0.1.0"
+name: agent-passport-worker
+version: "1.0.0"
+description: >
+  Verifies that an AI agent's identity, declared tools, and behavior
+  contract remain intact and portable when the same signed manifest is
+  loaded into different agent runtimes (a raw SDK loop, LangChain,
+  CrewAI, and LlamaIndex). It signs an agent manifest with HMAC-SHA256,
+  detects tampering of the manifest after signing, runs identical tasks
+  through every runtime, compares the resulting tool-call traces for
+  equivalence, and produces a structured, hash-stamped verification
+  certificate recording whether the agent is the same agent that was
+  signed and whether each runtime implementation complies with its
+  declared contract.
+
+# This repository does not declare a tools/skills list in the OpenGAP
+# sense: its actual capability surface is the set of runtime adapters
+# under adapters/ (raw-sdk, langchain, crewai, llamaindex), which are
+# real, tested integrations rather than declarative tool entries, and
+# the verification checks implemented in verification/harness.py. Those
+# are documented in EXPLAINABILITY.md rather than listed here, to avoid
+# declaring tools/skills that don't correspond to this manifest schema.

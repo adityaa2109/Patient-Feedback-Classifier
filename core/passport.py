@@ -88,8 +88,16 @@ def verify_behavior_contract_integrity(manifest: dict) -> bool:
 def validate_tool_arguments(tool_contract: "ToolContract", args: dict) -> list[str]:
     """Lightweight structural check of call arguments against a tool's
     declared input_schema. Intentionally NOT a full JSON Schema validator
-    (no extra dependency) — it checks required properties are present and,
-    where a "type" is declared, that the Python value's type is compatible.
+    (no extra dependency) — it checks required properties are present,
+    that a declared "type" is compatible with the Python value, and,
+    where present, that a numeric value respects declared "minimum" /
+    "maximum" bounds (standard JSON Schema keywords). This last part is
+    what lets semantic equivalence checking (see verification/harness.py)
+    treat two *different* numeric argument values as both valid, as long
+    as each independently respects the tool's own declared bounds — e.g.
+    a restock quantity of 90 and a restock quantity of 100 can both be
+    legitimate if the contract declares a 1-500 range, even though they
+    aren't the same number.
     Returns a list of human-readable problems; empty list == valid.
     """
     problems: list[str] = []
@@ -115,6 +123,15 @@ def validate_tool_arguments(tool_contract: "ToolContract", args: dict) -> list[s
             problems.append(
                 f"argument '{key}' expected type '{prop_schema.get('type')}', got {type(value).__name__}"
             )
+            continue  # don't also run a numeric bounds check on a non-numeric value
+
+        if prop_schema.get("type") in ("number", "integer") and isinstance(value, (int, float)):
+            minimum = prop_schema.get("minimum")
+            maximum = prop_schema.get("maximum")
+            if minimum is not None and value < minimum:
+                problems.append(f"argument '{key}' value {value} is below declared minimum {minimum}")
+            if maximum is not None and value > maximum:
+                problems.append(f"argument '{key}' value {value} exceeds declared maximum {maximum}")
     return problems
 
 

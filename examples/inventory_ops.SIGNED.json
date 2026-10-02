@@ -92,10 +92,13 @@
             "type": "string"
           },
           "quantity": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500
           },
           "max_order_value_usd": {
-            "type": "number"
+            "type": "number",
+            "minimum": 0
           }
         }
       },
@@ -125,7 +128,7 @@
   "verification": {},
   "signature": {
     "algorithm": "hmac-sha256",
-    "value": "050f8778543a2fb02ab2154c8daea996ec553d3d626aa8dc16c9490090f7cf00",
+    "value": "25232c9f3ab5c6af42a4222c84746179c79c51da323fb6623b9abc7a56b5f8b7",
     "signed_fields": [
       "passport_version",
       "identity",

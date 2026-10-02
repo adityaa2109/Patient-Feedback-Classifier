@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -528,3 +529,333 @@ def test_llamaindex_joins_cross_framework_equivalence_unmodified(signed_manifest
     certificate = harness.run(TASKS)
     assert certificate["checks"]["tool_call_equivalence"]["passed"] is True
     assert "llamaindex" in certificate["runtimes_tested"] or "llamaindex-shim" in certificate["runtimes_tested"]
+
+
+# ---------------------------------------------------------------------------
+# Semantic equivalence checking tests. Proves the new equivalence_mode
+# is purely additive: default behavior (exact mode / no mode specified)
+# is completely unchanged, while semantic mode correctly accepts valid
+# argument variation and still rejects genuine problems (wrong tool
+# sequence, invalid/out-of-bounds arguments).
+# ---------------------------------------------------------------------------
+
+from adapters.base import RunResult, ToolCallRecord
+
+
+def _inventory_passport():
+    with open(os.path.join(HERE, "..", "examples", "inventory_ops.manifest.json")) as f:
+        unsigned = json.load(f)
+    return Passport.load(sign_manifest(unsigned), strict=True)
+
+
+def _inventory_run_result(tag, calls):
+    result = RunResult(runtime_name=tag)
+    for tool_name, args, tool_result in calls:
+        result.tool_calls.append(ToolCallRecord(tool_name=tool_name, arguments=args, result=tool_result))
+    return result
+
+
+def test_default_mode_is_exact_and_behavior_is_unchanged(signed_manifest):
+    """No equivalence_mode argument at all -> identical behavior to
+    before this feature existed. This is the core backward-compatibility
+    guarantee: every existing caller of harness.run(tasks) keeps working
+    exactly as it did."""
+    passport = Passport.load(signed_manifest, strict=True)
+    adapters = [RawAdapter(passport), LangChainAdapter(passport), CrewAIAdapter(passport)]
+    harness = VerificationHarness(passport, adapters)
+    certificate = harness.run(TASKS)  # no equivalence_mode passed
+    assert certificate["equivalence_mode"] == "exact"
+    assert certificate["checks"]["tool_call_equivalence"]["passed"] is True
+
+
+def test_invalid_equivalence_mode_is_rejected(signed_manifest):
+    passport = Passport.load(signed_manifest, strict=True)
+    harness = VerificationHarness(passport, [RawAdapter(passport)])
+    with pytest.raises(ValueError):
+        harness.run(TASKS, equivalence_mode="fuzzy")
+
+
+def test_semantic_mode_accepts_different_but_valid_arguments_where_exact_would_fail():
+    """The headline case: two runtimes follow the same plan (same tools,
+    same order) but choose different, individually-valid quantities.
+    Exact-match must fail this; semantic must pass it."""
+    passport = _inventory_passport()
+    stock = {"item_sku": "SKU-WIDGET-001", "current_stock": 4, "reorder_threshold": 20}
+    notify = {"posted": True, "message_length": 10}
+
+    runtime_a = _inventory_run_result("runtime-A", [
+        ("check_stock_level", {"item_sku": "SKU-WIDGET-001"}, stock),
+        ("notify_ops_channel", {"message": "x"}, notify),
+        ("place_restock_order", {"item_sku": "SKU-WIDGET-001", "quantity": 100, "max_order_value_usd": 2000.0},
+         {"order_id": "PO-100", "total_cost_usd": 1250.0, "status": "placed"}),
+    ])
+    runtime_b = _inventory_run_result("runtime-B", [
+        ("check_stock_level", {"item_sku": "SKU-WIDGET-001"}, stock),
+        ("notify_ops_channel", {"message": "y"}, notify),
+        ("place_restock_order", {"item_sku": "SKU-WIDGET-001", "quantity": 90, "max_order_value_usd": 2000.0},
+         {"order_id": "PO-90", "total_cost_usd": 1125.0, "status": "placed"}),
+    ])
+
+    harness = VerificationHarness(passport, adapters=[])
+    per_runtime = {"runtime-A": [runtime_a], "runtime-B": [runtime_b]}
+
+    exact = harness._check_tool_call_equivalence(per_runtime)
+    semantic = harness._check_semantic_tool_call_equivalence(per_runtime)
+
+    assert exact["passed"] is False, "exact-match should fail on differing arguments (this is the problem semantic mode solves)"
+    assert semantic["passed"] is True, "semantic mode should accept the same plan with different valid arguments"
+    assert semantic["mode"] == "semantic"
+
+
+def test_semantic_mode_rejects_skipped_required_step():
+    """A runtime that skips check_stock_level before restocking violates
+    the agent's declared ordering constraint — semantic mode must still
+    catch this via the tool-sequence comparison, not wave it through
+    just because the final call is schema-valid."""
+    passport = _inventory_passport()
+    stock = {"item_sku": "SKU-WIDGET-001", "current_stock": 4, "reorder_threshold": 20}
+    notify = {"posted": True, "message_length": 10}
+
+    runtime_a = _inventory_run_result("runtime-A", [
+        ("check_stock_level", {"item_sku": "SKU-WIDGET-001"}, stock),
+        ("notify_ops_channel", {"message": "x"}, notify),
+        ("place_restock_order", {"item_sku": "SKU-WIDGET-001", "quantity": 100, "max_order_value_usd": 2000.0},
+         {"order_id": "PO-100", "total_cost_usd": 1250.0, "status": "placed"}),
+    ])
+    runtime_skipped = _inventory_run_result("runtime-skipped", [
+        ("notify_ops_channel", {"message": "x"}, notify),
+        ("place_restock_order", {"item_sku": "SKU-WIDGET-001", "quantity": 100, "max_order_value_usd": 2000.0},
+         {"order_id": "PO-100", "total_cost_usd": 1250.0, "status": "placed"}),
+    ])
+
+    harness = VerificationHarness(passport, adapters=[])
+    per_runtime = {"runtime-A": [runtime_a], "runtime-skipped": [runtime_skipped]}
+    semantic = harness._check_semantic_tool_call_equivalence(per_runtime)
+
+    assert semantic["passed"] is False
+    assert "runtime-skipped" in semantic["problems_by_runtime"]
+    assert "sequence differs" in semantic["problems_by_runtime"]["runtime-skipped"][0]
+
+
+def test_semantic_mode_rejects_out_of_bounds_argument():
+    """Same correct tool sequence, but a quantity above the tool's
+    declared maximum. Semantic mode must reject this on argument
+    validity grounds, independent of what any other runtime did."""
+    passport = _inventory_passport()
+    stock = {"item_sku": "SKU-WIDGET-001", "current_stock": 4, "reorder_threshold": 20}
+    notify = {"posted": True, "message_length": 10}
+
+    runtime_a = _inventory_run_result("runtime-A", [
+        ("check_stock_level", {"item_sku": "SKU-WIDGET-001"}, stock),
+        ("notify_ops_channel", {"message": "x"}, notify),
+        ("place_restock_order", {"item_sku": "SKU-WIDGET-001", "quantity": 100, "max_order_value_usd": 2000.0},
+         {"order_id": "PO-100", "total_cost_usd": 1250.0, "status": "placed"}),
+    ])
+    runtime_over = _inventory_run_result("runtime-over", [
+        ("check_stock_level", {"item_sku": "SKU-WIDGET-001"}, stock),
+        ("notify_ops_channel", {"message": "x"}, notify),
+        ("place_restock_order", {"item_sku": "SKU-WIDGET-001", "quantity": 10000, "max_order_value_usd": 2000.0},
+         {"order_id": "", "total_cost_usd": 125000.0, "status": "rejected_over_budget"}),
+    ])
+
+    harness = VerificationHarness(passport, adapters=[])
+    per_runtime = {"runtime-A": [runtime_a], "runtime-over": [runtime_over]}
+    semantic = harness._check_semantic_tool_call_equivalence(per_runtime)
+
+    assert semantic["passed"] is False
+    assert "exceeds declared maximum" in semantic["problems_by_runtime"]["runtime-over"][0]
+
+
+def test_semantic_mode_rejects_undeclared_tool():
+    passport = _inventory_passport()
+    stock = {"item_sku": "SKU-WIDGET-001", "current_stock": 4, "reorder_threshold": 20}
+
+    runtime_a = _inventory_run_result("runtime-A", [
+        ("check_stock_level", {"item_sku": "SKU-WIDGET-001"}, stock),
+    ])
+    runtime_bad = _inventory_run_result("runtime-bad", [
+        ("wire_transfer", {"amount": 500}, {"ok": True}),
+    ])
+
+    harness = VerificationHarness(passport, adapters=[])
+    per_runtime = {"runtime-A": [runtime_a], "runtime-bad": [runtime_bad]}
+    semantic = harness._check_semantic_tool_call_equivalence(per_runtime)
+
+    assert semantic["passed"] is False
+    problems = semantic["problems_by_runtime"]["runtime-bad"]
+    assert any("undeclared tool" in p for p in problems)
+
+
+def test_numeric_bounds_validation_standalone():
+    """Direct unit test of the new minimum/maximum support in
+    validate_tool_arguments, independent of the harness."""
+    from core.passport import validate_tool_arguments, ToolContract
+
+    contract = ToolContract(
+        name="place_restock_order", description="x",
+        input_schema={
+            "type": "object", "required": ["quantity"],
+            "properties": {"quantity": {"type": "integer", "minimum": 1, "maximum": 500}},
+        },
+        output_schema={},
+    )
+    assert validate_tool_arguments(contract, {"quantity": 100}) == []
+    assert validate_tool_arguments(contract, {"quantity": 500}) == []  # inclusive upper bound
+    assert validate_tool_arguments(contract, {"quantity": 1}) == []    # inclusive lower bound
+
+    too_high = validate_tool_arguments(contract, {"quantity": 501})
+    assert len(too_high) == 1 and "exceeds declared maximum" in too_high[0]
+
+    too_low = validate_tool_arguments(contract, {"quantity": 0})
+    assert len(too_low) == 1 and "below declared minimum" in too_low[0]
+
+
+# ---------------------------------------------------------------------------
+# HiDevs GitAgent Passport (OpenGAP) compliance tests. Verifies the
+# required root files exist and are structurally valid, so CI catches
+# any future regression (e.g. someone accidentally deleting agent.yaml
+# or breaking its required fields) automatically, not just at submission
+# time.
+# ---------------------------------------------------------------------------
+
+import yaml
+
+REPO_ROOT = os.path.join(HERE, "..")
+
+
+def test_agent_yaml_exists_at_repo_root_with_required_fields():
+    path = os.path.join(REPO_ROOT, "agent.yaml")
+    assert os.path.exists(path), "agent.yaml must exist directly in the repository root"
+    with open(path) as f:
+        data = yaml.safe_load(f)
+    assert data["spec_version"] == "0.1.0"
+    assert re.match(r"^[a-z][a-z0-9-]*$", data["name"]), "name must be lowercase, start with a letter, use hyphens"
+    assert "version" in data
+    assert isinstance(data["description"], str) and len(data["description"].strip()) > 20
+
+
+def test_soul_md_exists_and_has_substance():
+    path = os.path.join(REPO_ROOT, "SOUL.md")
+    assert os.path.exists(path), "SOUL.md must exist directly in the repository root"
+    with open(path) as f:
+        text = f.read()
+    assert len(text) > 500, "SOUL.md should contain meaningful, non-trivial content"
+    assert "# Identity" in text
+
+
+def test_explainability_md_has_required_headings_and_sentence_counts():
+    path = os.path.join(REPO_ROOT, "EXPLAINABILITY.md")
+    assert os.path.exists(path), "EXPLAINABILITY.md must exist directly in the repository root"
+    with open(path) as f:
+        text = f.read()
+    for heading in ["# Decision", "# Inputs", "# Limits"]:
+        assert heading in text, f"EXPLAINABILITY.md is missing required heading: {heading}"
+
+    sections = re.split(r"(?m)^# ", text)[1:]
+    for sec in sections:
+        lines = sec.split("\n", 1)
+        title = lines[0].strip()
+        body = lines[1] if len(lines) > 1 else ""
+        if title in ("Decision", "Inputs", "Limits"):
+            sentences = [s for s in re.split(r"(?<=[.!?])\s+", body.strip()) if len(s.split()) > 3]
+            assert len(sentences) >= 2, f"EXPLAINABILITY.md '{title}' section needs at least 2 real sentences"
+
+
+def test_no_duties_or_agents_maker_checker_conflict():
+    """This project has no DUTIES.md/AGENTS.md, so there is nothing that
+    could assign Maker and Checker roles incorrectly. This test pins
+    that fact so it's caught immediately if either file is ever added
+    without also reviewing the Maker/Checker rule."""
+    duties_exists = os.path.exists(os.path.join(REPO_ROOT, "DUTIES.md"))
+    agents_exists = os.path.exists(os.path.join(REPO_ROOT, "AGENTS.md"))
+    if duties_exists or agents_exists:
+        pytest.skip("DUTIES.md/AGENTS.md now exist — review Maker/Checker assignment manually before relying on this test")
+    assert True
+
+
+def test_no_committed_secrets_in_tracked_text_files():
+    """Scans all tracked text files for obvious hardcoded API key
+    patterns. A real secret should never be committed; env var NAMES
+    (ANTHROPIC_API_KEY, OPENAI_API_KEY, LYZR_API_KEY) are fine and
+    expected to appear."""
+    suspicious_patterns = [
+        re.compile(r"sk-ant-[a-zA-Z0-9]{20,}"),
+        re.compile(r"sk-[a-zA-Z0-9]{32,}"),
+    ]
+    text_extensions = (".py", ".yaml", ".yml", ".md", ".json", ".txt")
+    hits = []
+    for root, dirs, files in os.walk(REPO_ROOT):
+        dirs[:] = [d for d in dirs if d not in (".git", "__pycache__", ".pytest_cache", "node_modules")]
+        for fname in files:
+            if not fname.endswith(text_extensions):
+                continue
+            fpath = os.path.join(root, fname)
+            try:
+                with open(fpath, encoding="utf-8", errors="ignore") as f:
+                    content = f.read()
+            except (OSError, UnicodeDecodeError):
+                continue
+            for pattern in suspicious_patterns:
+                if pattern.search(content):
+                    hits.append(fpath)
+    assert hits == [], f"Possible hardcoded secret found in: {hits}"
+
+
+def test_openai_export_produces_valid_tool_schema(signed_manifest):
+    """Real, offline-safe test of adapters/openai_export.py against the
+    actual installed openai package: constructs a real client (no
+    network call) and validates the exported tool list against the
+    SDK's own expected structure."""
+    from adapters.openai_export import export_and_validate
+    passport = Passport.load(signed_manifest, strict=True)
+    result = export_and_validate(passport)
+    assert result["status"] in ("pass", "not_tested")  # "not_tested" only if openai isn't installed
+    if result["status"] == "pass":
+        assert result["exported_tool_count"] == len(passport.authorized_tool_names())
+        for tool in result["exported_tools"]:
+            assert tool["type"] == "function"
+            assert "name" in tool["function"]
+            assert "parameters" in tool["function"]
+
+
+def test_openai_export_excludes_unauthorized_tools(signed_manifest):
+    from adapters.openai_export import export_tools
+    manifest = json.loads(json.dumps(signed_manifest))
+    for t in manifest["tools"]:
+        if t["name"] == "search_hotels":
+            t["authorized"] = False
+    resigned = sign_manifest({k: v for k, v in manifest.items() if k != "signature"})
+    passport = Passport.load(resigned, strict=True)
+    exported = export_tools(passport)
+    names = [t["function"]["name"] for t in exported]
+    assert "search_hotels" not in names
+    assert "search_flights" in names
+
+
+def test_per_runtime_tasks_override_lets_runtimes_diverge(signed_manifest):
+    """Confirms the new per_runtime_tasks parameter actually works
+    end-to-end through real adapters: two real adapters fed DIFFERENT
+    routing for the same task description, verified under semantic mode."""
+    passport = Passport.load(signed_manifest, strict=True)
+    adapter_a = RawAdapter(passport)
+    adapter_b = RawAdapter(passport)
+    adapter_a.runtime_name = "raw-sdk-A"
+    adapter_b.runtime_name = "raw-sdk-B"
+
+    shared_tasks = {"book a flight": {"tool_calls": [], "final_answer": "placeholder"}}
+    per_runtime_tasks = {
+        "raw-sdk-A": {"book a flight": {
+            "tool_calls": [{"tool": "search_flights", "args": {"origin": "Delhi", "destination": "Goa", "date": "2026-01-01"}}],
+            "final_answer": "a",
+        }},
+        "raw-sdk-B": {"book a flight": {
+            "tool_calls": [{"tool": "search_flights", "args": {"origin": "Delhi", "destination": "Goa", "date": "2026-02-15"}}],
+            "final_answer": "b",
+        }},
+    }
+
+    harness = VerificationHarness(passport, [adapter_a, adapter_b])
+    certificate = harness.run(shared_tasks, equivalence_mode="semantic", per_runtime_tasks=per_runtime_tasks)
+
+    assert certificate["equivalence_mode"] == "semantic"
+    assert certificate["checks"]["tool_call_equivalence"]["passed"] is True  # same tool, different (both valid) dates

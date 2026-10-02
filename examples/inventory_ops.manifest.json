@@ -69,8 +69,8 @@
         "required": ["item_sku", "quantity", "max_order_value_usd"],
         "properties": {
           "item_sku": { "type": "string" },
-          "quantity": { "type": "integer" },
-          "max_order_value_usd": { "type": "number" }
+          "quantity": { "type": "integer", "minimum": 1, "maximum": 500 },
+          "max_order_value_usd": { "type": "number", "minimum": 0 }
         }
       },
       "output_schema": {

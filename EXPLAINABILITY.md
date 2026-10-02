@@ -6,7 +6,7 @@ still the agent that was signed and behaves the same in every runtime. This
 report explains what it decides, what it consumes, and where it stops being
 reliable. Every claim points at a real file and function in this repository.
 
-# Decision
+# Decision and Reasoning: How It Decides
 
 ## What the agent decides
 
@@ -76,7 +76,7 @@ trust. `_normalize_route` repairs only formatting noise (tool-name casing,
 numbers returned as strings) and never corrects an unknown tool name, so a
 hallucinated tool still fails check 3.
 
-# Inputs
+# Inputs and Data Sources: Data Used
 
 ## What goes in
 
@@ -151,7 +151,7 @@ a certification or a claim of full compliance.
   certificates give a traceable record. This project does not claim to be a
   regulated high-risk system.
 
-# Limits
+# Limitations, Constraints and Known Issues
 
 ## What the verification proves
 

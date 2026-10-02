@@ -555,8 +555,8 @@ be listed on HiDevs' registry.
 
 ### EXPLAIN
 
-`EXPLAINABILITY.md` contains the required `# Decision`, `# Inputs`, and
-`# Limits` headings, each with substantive, implementation-grounded
+`EXPLAINABILITY.md` contains the required Decision, Inputs, and Limitations
+headings (each containing the rubric keywords), each with substantive, implementation-grounded
 content (verified programmatically to contain at least two real
 sentences per section, not boilerplate). In short: this agent makes a
 binary, rule-based validity decision by running four independent checks

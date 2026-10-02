@@ -1,4 +1,4 @@
-name: Inventory Ops Tests
+name: Expense Approval Tests
 on: [push, pull_request]
 jobs:
   test:

@@ -1,11 +1,10 @@
 spec_version: "0.1.0"
-name: inventory-ops-agent
+name: expense-approval-agent
 version: "1.0.0"
 description: >
-  A warehouse operations agent that decides, for each SKU, whether stock is
-  low and, if so, plans and places a restock order that stays inside a
-  per-order budget. It always checks stock first, always notifies a human
-  ops channel before it spends money, never places two orders for the same
-  SKU in one task, and escalates to a human instead of guessing when the
-  budget cannot cover even one unit. Every decision is returned with a
-  plain-language reason and an audit log of the calls it made.
+  A finance-policy agent that reviews a single employee expense claim and
+  decides whether to approve it, reject it, or route it to a human. It checks
+  the claim against fixed company rules: prohibited categories, missing
+  receipts, duplicate claims, per-category limits, and a monthly spending cap
+  per employee. Every decision names the exact rules that triggered it, so a
+  reviewer can see why a claim was approved, rejected, or escalated.

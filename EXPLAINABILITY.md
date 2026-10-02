@@ -1,100 +1,109 @@
 # Explainability
 
-Inventory Ops Agent decides whether warehouse items need restocking and
-places budget-limited orders. This report explains how it decides, what data
-it uses, and where it should not be trusted. Every claim points to real code
-in `inventory_ops/policy.py` or `inventory_ops/warehouse.py`.
+Expense Approval Agent reviews one expense claim at a time and returns an
+approve, reject, or escalate decision. This report explains how it decides,
+what data it uses, and where it should not be trusted. Every claim points to
+real code in `expense_approval/policy.py`.
 
 # Decision and Reasoning: How It Decides
 
-This section explains how the agent decides whether to order, do nothing, or
-hand the case to a human. The decision is made by fixed rules, not by a
-model, so the same inputs always give the same result. Every decision comes
-back with a plain-language reason and an audit log of the tool calls made.
+This section explains how the agent reaches a decision. It uses fixed rules
+and no model, so the same claim and history always produce the same result.
+Every decision returns the rule identifiers that triggered it and a sentence
+of reasoning, so nothing is a black box.
 
-## The rules
+## The rules in order
 
-The function `plan_restock` in `inventory_ops/policy.py` applies these rules
-in order:
+The function `review_claim` checks these rules in order, and the first reject
+or escalate rule that fires decides the outcome:
 
-1. If the SKU is not in the warehouse table, the agent escalates to a human.
-2. If `current_stock >= reorder_threshold`, the agent takes no action.
-3. Otherwise it computes the quantity to order (formula below).
-4. If that quantity is below 1, the agent escalates because the budget cannot
-   buy a single unit.
-5. Otherwise it notifies the ops channel and then places the order.
+1. **R1** Reject if the amount is zero or negative.
+2. **R2** Reject if the category is prohibited (alcohol, personal, fines).
+3. **R3** Reject if the same employee, vendor, amount, and date already exist
+   in the history.
+4. **R4** Reject if the amount is above $25 and there is no receipt.
+5. **R5** Escalate to a manager if the category is unknown.
+6. **R6** Escalate to finance if the amount is above the category limit.
+7. **R7** Escalate to finance if this claim would push the employee's total
+   for that month above $3,000.
+8. **R8** Approve if the amount is $100 or less and no rule above fired.
+9. **R9** Otherwise escalate to a manager.
 
-## The formula
+## Why the order matters
 
-`quantity = min(target_stock - current_stock, 500, floor(budget / unit_price))`
+Hard failures such as prohibited items and duplicates come first, so an
+escalation is never wasted on a claim that should simply be rejected. Limits
+come before auto-approval, so a small claim cannot slip past a monthly cap.
 
-The first term refills toward the target, the second is the hard order cap,
-and the third is the most the budget can afford. For example, SKU-WIDGET-001
-has stock 4, target 120, and unit price $12.50. With a $2,000 budget the
-quantity is `min(116, 500, 160) = 116`, which costs $1,450.00.
+## Worked example
 
-## Safeguards in the order of calls
-
-The agent always calls `check_stock_level` first, then `notify_ops_channel`,
-then `place_restock_order`. It never orders the same SKU twice in one task and
-never makes more than six tool calls. A test in `tests/test_inventory_ops.py`
-checks each of these rules.
+A $300 software claim has a valid category and receipt, is under the $500
+software limit, and does not break the monthly cap. It is above $100, so R9
+applies and the claim goes to a manager. The output is `escalate`, route
+`manager`, rule `R9`.
 
 # Inputs and Data Sources: Data Used
 
 This section lists what the agent takes in and where its data comes from.
-The inputs are a list of SKUs and a per-order budget in US dollars. The data
-used is a fixed in-memory warehouse table, with no network calls and no
-personal data.
+Each review takes one claim and an optional list of earlier claims. The data
+used is only what is passed in, plus fixed policy numbers stored in the
+code.
 
 ## Inputs
 
-A task is a list of SKU strings and one number, `budget_usd`. SKUs are
-trimmed and upper-cased before use. No free text is interpreted, so there is
-no prompt to inject into.
+A claim has an employee name, category, amount in US dollars, an ISO date, a
+vendor, and a flag for whether a receipt exists. The history is a list of
+earlier claims in the same format. Categories are trimmed and lower-cased
+before they are compared.
 
 ## Data sources
 
-The warehouse table in `inventory_ops/warehouse.py` holds, for each of three
-SKUs, the current stock, reorder threshold, unit price, and target stock. The
-values are fixed example data, not a live inventory feed. A real deployment
-would replace the three tool functions with calls to an inventory system and
-a chat webhook, and the policy code would not change.
+The policy limits (category limits, the $25 receipt threshold, the $100
+auto-approval range, and the $3,000 monthly cap) are constants at the top of
+`expense_approval/policy.py`. There is no database, no network call, and no
+external service. The history comes from whoever calls the function.
+
+## Privacy
+
+The agent sees employee names and spending amounts only for the duration of
+one call. It stores nothing and sends nothing anywhere else. A real
+deployment should pass employee identifiers instead of names.
 
 ## Data lineage
 
-Data moves in one direction: task input → `check_stock_level` → `plan_restock`
-→ optional `notify_ops_channel` → optional `place_restock_order` → a
-`Decision` with its audit log. Nothing is stored between tasks.
+Data moves one way: the claim and history go into `review_claim`, and a
+`Decision` comes out. Nothing is written back, and no state is kept between
+calls.
 
 # Limitations, Constraints and Known Issues
 
-This section states where the agent should not be trusted. It uses fixed
-example data, so its stock numbers are not real. The rules are simple on
-purpose, which makes them easy to audit but means they miss anything outside
-the rules.
+This section states where the agent should not be trusted. It checks claims
+against simple rules, so it cannot judge whether a purchase was truly
+necessary. The limits are example values and have not been tuned for any real
+company.
 
 ## Known limitations
 
-- The warehouse data is a fixed example table, not a live system, so the
-  agent shows decision logic and not real inventory accuracy.
-- The agent does not forecast demand, lead times, or seasonality. It reacts
-  only to the reorder threshold.
-- The order cap of 500 units and the six-call limit are fixed constants, not
-  tuned to any real warehouse.
-- Prices are fixed. A real price change would not be noticed.
-- Unknown SKUs are escalated, but the agent cannot tell a typo from a new
-  product.
+- It cannot read or verify a receipt. The `has_receipt` flag is trusted as
+  given.
+- Duplicate detection only matches exact vendor, amount, date, and employee,
+  so a near-duplicate with a different amount is not caught.
+- The category list is small and fixed. A new valid category is escalated
+  until someone adds it.
+- It has no currency handling. All amounts are assumed to be US dollars.
+- The monthly cap counts only the history it is given, so a missing history
+  hides earlier spending.
 
 ## Constraints that are enforced
 
-The agent never exceeds the budget, never orders without a prior stock check
-and notification, never double-orders a SKU in one task, and never makes more
-than six tool calls. These are checked by automated tests.
+The agent never approves prohibited categories, duplicates, large claims
+without receipts, or claims that break the monthly cap. Automated tests in
+`tests/test_expense_approval.py` check each of these rules, including the
+boundaries at $25 and $100.
 
 ## Safety and human oversight
 
-The agent is meant to support a human, not replace one. It tells the ops
-channel before every order and escalates instead of guessing whenever a case
-falls outside its rules. It should not be used for high-value purchasing
-without a human approval step.
+The agent supports a finance team and does not replace it. It never approves
+anything above $100, and it routes every unclear case to a named person. It
+should not be the only control on real money, and a person should sample its
+approvals regularly.

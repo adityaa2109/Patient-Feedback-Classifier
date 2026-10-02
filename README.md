@@ -1,14 +1,12 @@
-# Inventory Ops Agent
+# Expense Approval Agent
 
-A small, rule-based warehouse agent. For each SKU it checks stock, and if
-stock is below the reorder threshold it works out a quantity that stays
-inside a per-order budget, notifies a human ops channel, and then places the
-order. When the case falls outside its rules it escalates instead of guessing.
+A small, rule-based agent that reviews one employee expense claim and returns
+**approve**, **reject**, or **escalate** (to a manager or to finance). Each
+decision lists the rule identifiers that caused it and a plain-language reason.
 
-This is the standalone version of the "Inventory Ops" example agent from my
-Agent Passport project (`adityaa2109/agent-passport`). That repository verifies
-agent manifests across frameworks. This repository is the agent itself, with
-its own policy code, tests, and documentation.
+It checks, in order: invalid amounts, prohibited categories, duplicates,
+missing receipts, unknown categories, category limits, a monthly spending cap,
+and then either auto-approves small claims or sends larger ones to a manager.
 
 ## Run it
 
@@ -21,12 +19,11 @@ python -m pytest tests -v
 ## Files
 
 - `agent.yaml`, `SOUL.md`, `EXPLAINABILITY.md`: the OpenGAP agent description.
-- `inventory_ops/warehouse.py`: the three tools and a fixed example warehouse.
-- `inventory_ops/policy.py`: the decision rules and the audit log.
-- `tests/`: 13 tests covering the rules, the budget, ordering, and docs.
+- `expense_approval/policy.py`: all rules, limits, and the `review_claim` function.
+- `tests/`: 16 tests covering every rule, the boundaries, and the documents.
 
 ## Honest scope
 
-The warehouse data is fixed example data and there is no live inventory
-connection. The agent demonstrates safe, auditable decision logic, not a
-production purchasing system.
+The limits are example values and the agent cannot verify receipts. It is a
+clear, auditable example of policy-based decisions, not a production finance
+system.

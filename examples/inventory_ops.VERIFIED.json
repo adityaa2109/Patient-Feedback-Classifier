@@ -132,7 +132,7 @@
       "crewai",
       "llamaindex"
     ],
-    "last_verified_at": "2026-10-02T08:35:35.399671+00:00",
+    "last_verified_at": "2026-10-02T08:43:51.879785+00:00",
     "verification_hash": "fa710fb1f9656d27bf9543b4b9939a260758330511b6e2f1d6d576730de7023b",
     "certificate": {
       "agent_id": "agent.hidevs.inventory-ops",
@@ -176,8 +176,8 @@
         "violations": [],
         "overall": true
       },
-      "generated_at": "2026-10-02T08:35:35.399392+00:00",
-      "certificate_hash": "6ac5215aa830258040e3b539207c875e1dff273d0ba7b0e45e27fc42fa01f5db"
+      "generated_at": "2026-10-02T08:43:51.879480+00:00",
+      "certificate_hash": "623096311db52feb8098b8aa1af9599d647d39a280faad8d2ae7e91cc5e932f5"
     }
   },
   "signature": {

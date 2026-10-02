@@ -130,7 +130,7 @@
       "crewai",
       "llamaindex"
     ],
-    "last_verified_at": "2026-10-02T08:35:29.600478+00:00",
+    "last_verified_at": "2026-10-02T08:43:46.919287+00:00",
     "verification_hash": "2089202665c70008fd866098f8c0478270fcb6171e2349a0e77f6cc526d93dcc",
     "certificate": {
       "agent_id": "agent.hidevs.travel-concierge",
@@ -174,8 +174,8 @@
         "violations": [],
         "overall": true
       },
-      "generated_at": "2026-10-02T08:35:29.600037+00:00",
-      "certificate_hash": "bc352c5ee48517235d19a5e177d9329806623ec2ccd959bf7c44b36bb6f6beeb"
+      "generated_at": "2026-10-02T08:43:46.918647+00:00",
+      "certificate_hash": "64254ec7c9e6acec0604ace626d46d584107dfdfc434ef93d58797c90392f45b"
     }
   },
   "signature": {

@@ -1,4 +1,4 @@
-name: Code Review Checker Tests
+name: Ticket Router Tests
 on: [push, pull_request]
 jobs:
   test:

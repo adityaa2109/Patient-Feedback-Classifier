@@ -1,37 +1,14 @@
-from code_review import review_diff
+from ticket_router import Ticket, route_ticket
 
-FAKE_KEY = "AKIA" + "X" * 16   # built at runtime so no real-looking key sits in the source
-
-DIFFS = {
-    "Clean change with a test": """\
---- a/app/math_utils.py
-+++ b/app/math_utils.py
-@@ -1,2 +1,4 @@
- def add(a, b):
--    return a+b
-+    return a + b
---- a/tests/test_math_utils.py
-+++ b/tests/test_math_utils.py
-@@ -1,1 +1,3 @@
-+def test_add():
-+    assert 1 + 1 == 2
-""",
-    "Secret and eval": f"""\
---- a/app/config.py
-+++ b/app/config.py
-@@ -1,1 +1,3 @@
-+KEY = "{FAKE_KEY}"
-+result = eval(user_input)
-""",
-    "CI workflow edit": """\
---- a/.github/workflows/test.yml
-+++ b/.github/workflows/test.yml
-@@ -1,1 +1,2 @@
-+      - run: echo hello
-""",
-}
-for name, diff in DIFFS.items():
-    r = review_diff(diff)
-    print(f"\n== {name} -> {r.verdict.upper()} ({r.summary})")
-    for f in r.findings:
-        print(f"   [{f.rule}/{f.severity}] {f.path}:{f.line} {f.message}")
+TICKETS = [
+    Ticket("Charged twice", "I was charged twice for my subscription, please refund."),
+    Ticket("App crashes", "The app crashes on login. This is urgent, production is blocked.", "premium"),
+    Ticket("Suspicious login", "Someone logged in to my account from another country."),
+    Ticket("Hello", "Just wanted to say hi."),
+    Ticket("Complaint", "If this is not fixed I will take legal action."),
+    Ticket("Still broken", "The report page is still broken, this is my 4th message.", previous_contacts=3),
+]
+for t in TICKETS:
+    r = route_ticket(t)
+    flag = "HUMAN" if r.needs_human else "auto "
+    print(f"{t.subject:18} -> {r.queue:14} {r.urgency:8} SLA {r.sla_hours:>2}h {flag} [{', '.join(r.rule_ids)}]")

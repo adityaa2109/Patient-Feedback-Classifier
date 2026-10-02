@@ -1,12 +1,14 @@
-# Code Review Checker
+# Support Ticket Router
 
-A small, rule-based agent that reads a unified diff and returns **approve**,
-**request changes**, or **needs human**, with each finding tied to a rule,
-severity, file, and line number. It flags hardcoded secrets, dangerous calls
-(`eval`, `exec`, `os.system`, `shell=True`, `pickle`), bare `except:`, skipped
-tests, debug leftovers, source changes without tests, oversized changes, and
-edits to sensitive files such as CI workflows. It never prints the value of a
-suspected secret.
+A small, rule-based agent that reads a customer support ticket and returns a
+**queue** (billing, tech support, account, security, or human triage), an
+**urgency** (low, normal, high, critical), a **response deadline** (1, 4, 24,
+or 72 hours), and a flag for human handling. Every result lists the rule
+identifiers that produced it.
+
+Safety, legal, and privacy-sensitive tickets always go to a person. Tickets
+the rules cannot classify, or where two categories tie, also go to a person
+instead of a guess.
 
 ## Run it
 
@@ -19,11 +21,11 @@ python -m pytest tests -v
 ## Files
 
 - `agent.yaml`, `SOUL.md`, `EXPLAINABILITY.md`: the OpenGAP agent description.
-- `code_review/checker.py`: the diff parser, the rules, and the verdict logic.
-- `tests/`: automated tests for every rule, the verdict order, and the documents.
+- `ticket_router/router.py`: the rules, keyword lists, and the `route_ticket` function.
+- `tests/`: automated tests for every rule, the boundaries, and the documents.
 
 ## Honest scope
 
-This is pattern matching on text. It can miss real problems and flag harmless
-code, so it should be used next to real secret scanners, static analysis, and
-human review, not instead of them.
+This is keyword matching. It cannot understand tone, sarcasm, or negation,
+and its keyword lists are examples. It supports a support team and does not
+replace human judgment, especially for sensitive messages.

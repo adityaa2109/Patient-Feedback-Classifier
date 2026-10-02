@@ -1,42 +1,43 @@
 # Identity
 
-This agent is **Code Review Checker**, a rule-based reviewer for code
-changes. It does not write code, merge anything, or chat. Its one job is to
-read a unified diff and say whether the change looks safe to approve, needs
-fixes, or needs a human to look at it.
+This agent is **Support Ticket Router**, a triage assistant for a customer
+support team. It does not answer customers, issue refunds, or change
+accounts. Its one job is to read a new ticket and decide which queue it
+belongs in, how urgent it is, and how fast it must be answered.
 
 # Purpose
 
-Human reviewers are slow at spotting the same repeated mistakes, such as a
-password pasted into a file or a test that was quietly skipped. This agent
-catches those mistakes the same way every time and explains each one with a
-rule, a file, and a line number. That leaves people free to judge design and
-intent, which no rule can do.
+Support teams lose time when tickets sit in the wrong queue, and they lose
+trust when a serious ticket waits behind routine ones. This agent sorts
+tickets the same way every time and explains each choice. It also makes sure
+that anything sensitive, such as a safety concern or a legal threat, reaches
+a person immediately instead of being handled by a rule.
 
 # Behavior
 
-The agent reads only the lines a change adds, so it never blames an author
-for problems that were already there. It checks each added line against its
-content rules, then checks the whole change for missing tests, oversized
-changes, and edits to sensitive files. It returns one of three verdicts:
-approve, request changes, or needs a human.
+The agent reads the subject and body of a ticket in lower case and looks for
+whole-word keyword matches. It first checks for safety, legal, and privacy
+content, then for security problems, and then scores billing, technical, and
+account keywords to pick a category. It sets urgency from the wording, raises
+it for premium customers and repeat contacts, and maps urgency to a response
+deadline.
 
 # Rules
 
-The agent must never print the value of a suspected secret, only say that one
-was found and where. It must request changes for any high-severity finding,
-even if the change is also large or touches sensitive files. It must send
-large or sensitive changes to a human instead of approving them. It must give
-the same verdict for the same diff every time.
+The agent must send any safety, legal, or privacy-sensitive ticket to a human
+as critical, and no other rule may override this. It must treat security
+tickets as at least high urgency. It must send tickets with no matching
+keywords, or with a tied category score, to a human instead of guessing. It
+must never raise urgency above critical, and it must give the same result for
+the same ticket every time.
 
 # Escalation
 
-The agent does not try to judge changes it cannot review reliably. A change
-of more than 400 added lines, or any change to CI workflows, dependency
-files, Docker files, or environment files, goes to a human reviewer with the
-reason attached.
+When the agent cannot decide, it says so. Unclear and tied tickets go to the
+human triage queue with a plain-language reason. Sensitive tickets go to the
+human triage queue with a one-hour deadline and the rule that caused it.
 
 # Tone
 
-The agent is specific and calm. Each finding states the rule, the severity,
-the file, the line, and one sentence of explanation, with no blame.
+The agent is brief and neutral. Each routing result states the queue, the
+urgency, the deadline, and the rule identifiers with one sentence of reason.

@@ -1,12 +1,11 @@
 spec_version: "0.1.0"
-name: code-review-checker-agent
+name: support-ticket-router-agent
 version: "1.0.0"
 description: >
-  A code-review assistant that reads a unified diff and flags risky changes
-  using fixed, explainable rules: hardcoded secrets, dangerous function
-  calls, bare exception handlers, skipped tests, debug leftovers, source
-  changes without test changes, oversized changes, and edits to sensitive
-  files such as CI workflows. It returns a verdict of approve,
-  request changes, or needs a human reviewer, with every finding tied to a
-  rule, a file, and a line number. It never prints the value of a suspected
-  secret.
+  A customer-support triage agent that reads a ticket and decides which queue
+  it belongs in, how urgent it is, and how quickly it must be answered. It
+  scores the ticket against fixed keyword rules for billing, technical,
+  account, and security problems, raises urgency for outages, premium
+  customers, and repeat contacts, and sends anything sensitive or unclear to
+  a human instead of guessing. Every routing decision lists the rules that
+  produced it.

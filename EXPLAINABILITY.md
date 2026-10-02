@@ -1,122 +1,117 @@
 # Explainability
 
-Code Review Checker reads a unified diff and returns a verdict with itemized
-findings. This report explains how it decides, what it reads, and where it
-should not be trusted. Every claim points to real code in
-`code_review/checker.py`.
+Support Ticket Router reads one ticket and returns a queue, an urgency, a
+response deadline, and a flag for human handling. This report explains how it
+decides, what it reads, and where it should not be trusted. Every claim
+points to real code in `ticket_router/router.py`.
 
 # Decision and Reasoning: How It Decides
 
-This section explains how the agent reaches a verdict. It uses fixed text
-patterns and counts, with no model, so the same diff always gives the same
-answer. Each finding carries a rule identifier, a severity, a file, and a
-line number, so the reasoning behind a verdict can be checked by hand.
+This section explains how the agent reaches a routing decision. It uses
+fixed keyword rules and no model, so the same ticket always gets the same
+result. Each result lists the rule identifiers that produced it, so a person
+can see exactly why a ticket went where it did.
 
-## Step 1: find the added lines
+## The rules in order
 
-`parse_diff` walks the diff, tracks the current file from the `+++` line and
-the new line number from each `@@` hunk header, and collects only the lines
-that begin with `+`. Removed and unchanged lines are ignored, so old problems
-are not blamed on the author.
+The function `route_ticket` applies these rules in order:
 
-## Step 2: apply the content rules
+1. **T1** If the text contains safety, legal, or privacy-sensitive phrases
+   (for example a threat of legal action), route to `human-triage` as
+   critical with a one-hour deadline and stop.
+2. **T2** If the text contains security phrases (for example "hacked" or
+   "suspicious login"), the category is security.
+3. **T3** Otherwise score billing, technical, and account keywords. The
+   category with the highest total weight wins.
+4. **T4** If no keyword matched, or two categories tie, route to
+   `human-triage` for a person to decide.
+5. **T5** Set urgency from wording: question wording lowers it to low, blocked
+   work or deadlines raise it to high, and outage or data-loss wording raises
+   it to critical. Security tickets are at least high.
+6. **T6** A premium customer raises urgency by one level.
+7. **T7** A third or later contact about the same issue raises urgency by
+   one level.
 
-Each added line is tested against the rules in `CONTENT_RULES`, and the first
-match on a line becomes its single finding:
+## Urgency and deadlines
 
-| Rule | Severity | What it flags |
-|---|---|---|
-| C1 | high | Likely AWS keys, private key headers, hardcoded passwords or tokens |
-| C2 | high | `eval`, `exec`, `os.system`, `shell=True`, `pickle.load(s)` |
-| C3 | medium | Bare `except:` |
-| C4 | medium | A skipped test |
-| C5 | low | Debug output such as `print(`, `breakpoint(`, `console.log(` |
-| C6 | low | `TODO`, `FIXME`, `HACK` |
-
-## Step 3: apply the whole-change rules
-
-Rule C7 (medium) fires when source files changed but no test file did. A
-change is also marked large if it adds more than 400 lines, and sensitive if
-it touches CI workflows, Docker files, dependency files, or `.env` files.
-
-## Step 4: choose the verdict
-
-The verdict is chosen in this order:
-
-1. Any high finding gives **request changes**.
-2. Otherwise a large or sensitive change gives **needs human**.
-3. Otherwise any medium finding gives **request changes**.
-4. Otherwise the result is **approve**, with low findings listed as notes.
+Urgency maps to a response deadline: critical is 1 hour, high is 4 hours,
+normal is 24 hours, and low is 72 hours. Urgency can never go above
+critical.
 
 ## Worked example
 
-A diff adds `result = eval(user_input)` to `app/config.py` and changes no
-tests. Rule C2 fires as high and rule C7 fires as medium. Because a high
-finding exists, the verdict is request changes, with both findings listed.
+A premium customer writes that the app crashes on login, the matter is
+urgent, and production is blocked. The word "crashes" scores 3 for technical
+and "login" scores 2 for account, so technical wins (T3). The words "urgent"
+and "production" raise urgency to high (T5), and the premium tier raises it
+to critical (T6). The ticket goes to `tech-support` with a one-hour deadline.
 
 # Inputs and Data Sources: Data Used
 
-This section lists what the agent reads and where the data comes from. The
-only input is the text of a unified diff passed to `review_diff`. The data
-used is that text plus fixed rule patterns stored in the code, with no
-network access and no stored history.
+This section lists what the agent reads and where its data comes from. The
+only inputs are the ticket text and two customer facts. The data used is
+those inputs plus keyword lists stored in the code, with no network access
+and no stored history.
 
 ## Inputs
 
-The input is one string in the standard unified diff format produced by
-`git diff`. The agent reads file names from `+++` lines, line numbers from
-`@@` headers, and the content of lines that start with `+`.
+A ticket has a subject, a body, a customer tier (standard or premium), and a
+count of earlier contacts about the same issue. The subject and body are
+joined and lower-cased, and keywords are matched as whole words so that a
+word like "pressed" does not match "press".
 
 ## Data sources
 
-The rule patterns, the 400-line threshold, and the list of sensitive paths
-are constants at the top of `code_review/checker.py`. There is no database,
-no external service, and no model call.
+The keyword lists, weights, queue names, and deadlines are constants at the
+top of `ticket_router/router.py`. There is no database, no customer record
+lookup, and no external service. The tier and contact count come from
+whoever calls the function.
 
-## Privacy and secrets
+## Privacy
 
-The agent may see real secrets inside a diff. It never copies a matched
-value into a finding, a summary, or any output, and it does not store the
-diff after returning the result. Its messages say only that a possible
-secret was found and where.
+Tickets may contain personal details. The agent keeps nothing after a call
+and sends nothing to any other system. Its reasons describe the rule that
+fired and do not repeat the customer's words.
 
 ## Data lineage
 
-Data moves one way: the diff text goes into `parse_diff`, the added lines go
-through the rules, and a `Review` object comes out with a verdict and its
-findings. Nothing is written back and no state is kept between calls.
+Data moves one way: the ticket goes into `route_ticket`, the rules run in
+order, and a `Routing` object comes out. Nothing is written back and no state
+is kept between calls.
 
 # Limitations, Constraints and Known Issues
 
-This section states where the agent should not be trusted. It matches text
-patterns, so it can both miss real problems and flag harmless code. It
-cannot understand what a change is meant to do, so a clean verdict is not a
-guarantee that the code is correct or secure.
+This section states where the agent should not be trusted. It matches
+keywords, so it can misread sarcasm, negation, and any wording it has not
+been given. A routing result is a suggestion for a queue, not a judgment of
+what the customer really needs.
 
 ## Known limitations
 
-- Pattern matching produces false positives, such as a harmless `eval(` in a
-  comment or a test fixture, and false negatives, such as a secret split
-  across two lines or encoded.
-- The secret rules cover a few common formats and miss many others.
-- It treats a file as a test only by name, so a test stored under an unusual
-  name counts as source.
-- It reads only added lines, so a problem created by removing a safeguard is
-  not seen.
-- It checks Python-style and JavaScript-style patterns best and covers other
-  languages weakly.
-- The 400-line threshold and the sensitive path list are example values, not
-  tuned to any real team.
+- It does not understand meaning. "This is not a refund request" still scores
+  as billing because the word "refund" appears.
+- It reads English only, and misspellings are not matched.
+- Keyword weights and queue names are example values and have not been tuned
+  on real tickets.
+- The safety and legal phrase list is short. A distressed customer who uses
+  other words will not be sent to a person by rule T1.
+- A ticket that mixes two problems is routed by the higher score only, so the
+  second problem is not flagged.
+- The tier and contact count are trusted as given and are not checked
+  against any customer record.
 
 ## Constraints that are enforced
 
-The agent never prints a suspected secret, never approves a change with a
-high-severity finding, and never approves a large or sensitive change without
-a human. Automated tests in `tests/test_code_review.py` check each of these
-rules, including the 400-line boundary and line numbering.
+The agent always routes sensitive tickets to a human with a one-hour
+deadline, never lets any rule override that, treats security as at least
+high urgency, never exceeds critical, and sends unclear or tied tickets to a
+person. Automated tests in `tests/test_ticket_router.py` check each of these
+rules.
 
 ## Safety and human oversight
 
-The agent supports reviewers and does not replace them. It should be one
-check among several, alongside real secret scanners, static analysis, and a
-human reading the change. A person should make the final merge decision.
+The agent supports a support team and does not replace it. Because it cannot
+read tone or context, a person should sample its routing results regularly,
+and anyone who may be in distress should be handled by a trained person, not
+by a keyword list. The phrase list should be reviewed by that team before any
+real use.
